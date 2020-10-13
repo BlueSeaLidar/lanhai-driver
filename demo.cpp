@@ -1,5 +1,5 @@
-// ½âÎöºóµÄÊı¾İ¿ÉÒÔÔÚ data_process ·ÖÎö
-// Çë¸ù¾İÊµ¼ÊÁ¬½Ó·½Ê½ĞŞ¸Ämainº¯ÊıÖĞ¶ÔÓ¦²ÎÊı
+// è§£æåçš„æ•°æ®å¯ä»¥åœ¨ data_process åˆ†æ
+// è¯·æ ¹æ®å®é™…è¿æ¥æ–¹å¼ä¿®æ”¹mainå‡½æ•°ä¸­å¯¹åº”å‚æ•°
 
 
 #include <stdio.h>
@@ -49,8 +49,8 @@ struct RawData
 
 struct DataPoint
 {
-	float angle; // »¡¶È
-	float distance; // Ã×
+	float angle; // å¼§åº¦
+	float distance; // ç±³
 };
 
 
@@ -378,11 +378,11 @@ int uart_talk(int fd, int n, const char* cmd,
 
 void data_process(int n, DataPoint* points)
 {
-	printf("360¡ãÊı¾İµãÊı %d\n", n);
+	printf("360Â°æ•°æ®ç‚¹æ•° %d\n", n);
 }
 
 RawData dat360[10];
-// Ã¿´Î»ñµÃ36¡ãÉÈÇøÊı¾İ
+// æ¯æ¬¡è·å¾—36Â°æ‰‡åŒºæ•°æ®
 void data_process(RawData* data)
 {
 	// int mi = 100000;
@@ -390,7 +390,7 @@ void data_process(RawData* data)
 	// if (data->distance[i] > 0 && mi > data->distance[i])
 	// mi = data->distance[i];
 	// }
-	//printf("½Ç¶È %d, Êı¾İµãÊı %d\n", data->angle/10, data->N);
+	//printf("è§’åº¦ %d, æ•°æ®ç‚¹æ•° %d\n", data->angle/10, data->N);
 
 	dat360[data->angle/360] = *data;
 	if (data->angle != 3600-360) return ;
@@ -421,21 +421,21 @@ void data_process(RawData* data)
 
 int main(int argc, char **argv)
 {
-	const char* type = "uart"; 		// Á¬½Ó·½Ê½£º"uart" ´®¿Ú£¬ "tcp" ÍøÂç·½·¨
-	const char* port = "/dev/ttyUSB0"; 	// ´®¿ÚÃû³Æ
-	const char* dev_ip = "192.168.158.91"; 	// À×´ïµÄÍøÂçµØÖ·
-	int tcp_port = 5000; 			// À×´ïµÄTCP¶Ë¿Ú
+	const char* type = "uart"; 		// è¿æ¥æ–¹å¼ï¼š"uart" ä¸²å£ï¼Œ "tcp" ç½‘ç»œæ–¹æ³•
+	const char* dev_ip = "192.168.158.91"; 	// é›·è¾¾çš„ç½‘ç»œåœ°å€
+	int tcp_port = 5000; 			// é›·è¾¾çš„TCPç«¯å£
+	int with_chk = 1; 		// ä½¿èƒ½æ•°æ®æ ¡éªŒ
 
-	int unit_is_mm = 1; 		// Êı¾İÊÇºÁÃ×Îªµ¥Î»,ÀåÃ×Ê±Îª0
-	int with_confidence = 1; 	// Êı¾İÖĞ´øÓĞÇ¿¶È
-	int with_chk = 1; 		// Ê¹ÄÜÊı¾İĞ£Ñé
-
-	if (argc < 2) {
-		printf("usage : ./lidar ²¨ÌØÂÊ\n");
+	if (argc < 5) {
+		printf("usage : ./lidar ä¸²å£åç§° æ³¢ç‰¹ç‡ å•ä½æ˜¯æ¯«ç±³ æ•°æ®ä¸­å¸¦æœ‰å¼ºåº¦\n");
 		return -1;
 	}
-	int baud_rate = atoi(argv[1]); 		// ´®¿Ú²¨ÌØÂÊ
-
+	
+	char* port = argv[1];			//ä¸²å£åç§° "/dev/ttyUSB0"; 
+	int baud_rate = atoi(argv[2]); 		// ä¸²å£æ³¢ç‰¹ç‡
+	int unit_is_mm = atoi(argv[3]); 	// æ•°æ®æ˜¯æ¯«ç±³ä¸ºå•ä½,å˜ç±³æ—¶ä¸º0
+	int with_confidence = atoi(argv[4]); 	// æ•°æ®ä¸­å¸¦æœ‰å¼ºåº¦
+	
 	//int mirror =  0;
 	//int from_zero = 0;
 	//int angle_patch = 1;
