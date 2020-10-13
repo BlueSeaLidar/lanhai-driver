@@ -2,7 +2,10 @@
 linux demo programs for lanhai 2d lidar
 
 # compile
-run ./build.sh to compile the demo programs
+souce ./build.sh #compile the demo programs
+
+# plug lidar usb port, make sure /dev/ttyUSBx existed, add read / write attribution
+sudo chmod 666 /dev/ttyUSB0
 
 # if your lidar model is LDS-25C or LDS-50C:
 ./lidar /dev/ttyUSB0 230400 0 1
