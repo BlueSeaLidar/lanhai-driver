@@ -7,6 +7,12 @@ souce ./build.sh #compile the demo programs
 # plug lidar usb port, make sure /dev/ttyUSBx existed, add read / write attribution
 sudo chmod 666 /dev/ttyUSB0
 
+# for LDS-40D-B20R 
+./lidar /dev/ttyUSB0 1000000 1 1 200
+
+# for LDS-50C-B40R 
+./lidar /dev/ttyUSB0 1000000 1 1 400
+
 # if your lidar model is LDS-25C or LDS-50C:
 ./lidar /dev/ttyUSB0 230400 0 1
 
