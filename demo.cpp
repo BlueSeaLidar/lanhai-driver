@@ -27,8 +27,21 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <math.h>
+#include <vector>
 
 extern "C" int change_baud(int fd, int baud);
+
+
+#define PI 3.14159265
+
+#define HDR_SIZE 6
+#define HDR2_SIZE 8
+#define HDR3_SIZE 16 
+
+#define MAX_POINTS 500
+
+#define BUF_SIZE 8*1024
+
 
 //#include <linux/termios.h>
 struct RawDataHdr
@@ -38,34 +51,43 @@ struct RawDataHdr
 	unsigned short angle;
 };
 
-struct RawData
+struct RawDataHdr2
 {
 	unsigned short code;
 	unsigned short N;
 	unsigned short angle;
-	unsigned short distance[1000];
-	unsigned char confidence[1000];
+	unsigned short span;
+};
+
+struct RawDataHdr3
+{
+	unsigned short code;
+	unsigned short N;
+	unsigned short angle;
+	unsigned short span;
+	unsigned short fbase;
+	unsigned short first;
+	unsigned short last;
+	unsigned short fend;
 };
 
 struct DataPoint
 {
 	float angle; // 弧度
 	float distance; // 米
+	unsigned char confidence;
 };
 
-
-#define PI 3.14159265
-
-#define HDR_SIZE 6
-
-#define BUF_SIZE 512*1024
-
-struct CmdHeader
+struct RawData
 {
-	unsigned short sign;
-	unsigned short cmd;
-	unsigned short sn;
-	unsigned short len;
+	unsigned short code;
+	unsigned short N;
+	unsigned short angle;
+	unsigned short span;
+
+	DataPoint points[MAX_POINTS];
+	// unsigned short distance[1000];
+	// unsigned char confidence[1000];
 };
 
 // serial port handle
@@ -159,18 +181,143 @@ int open_serial_port(const char* port, int baudrate)
 	return fd;
 }
 
+bool GetData0xCE(const RawDataHdr& hdr, unsigned char* pdat, int span, int with_chk, RawData& dat)
+{
+	// calc checksum
+	unsigned short sum = hdr.angle + hdr.N, chk;
+	for (int i=0; i<hdr.N; i++)
+	{
+		dat.points[i].confidence = *pdat++;
+		sum += dat.points[i].confidence;
+
+		unsigned short v = *pdat++;
+		unsigned short v2 = *pdat++;
+		unsigned short vv = (v2<<8) | v;
+		dat.points[i].distance = vv / 1000.0;
+		sum += vv;
+		dat.points[i].angle = (hdr.angle + span * i / hdr.N) * PI / 1800;
+	}
+
+	memcpy(&chk, pdat, 2);
+
+	if (with_chk != 0 && chk != sum) 
+	{
+		printf("chksum ce error");
+		// consume = idx + HDR_SIZE + 3*hdr.N + 2;
+		return false;
+	}
+
+	memcpy(&dat, &hdr, HDR_SIZE);
+	dat.span = span;
+	//memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
+	//printf("get3 %d(%d)\n", hdr.angle, hdr.N);
+	
+	return true;
+}
+
+bool GetData0xCF(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawData& dat)
+{
+	unsigned short sum = hdr.angle + hdr.N + hdr.span, chk;
+
+	for (int i = 0; i < hdr.N; i++)
+	{
+		dat.points[i].confidence = *pdat++;
+		sum += dat.points[i].confidence;
+
+		unsigned short v = *pdat++;
+		unsigned short v2 = *pdat++;
+
+		unsigned short vv = (v2 << 8) | v;
+
+		sum += vv;
+		dat.points[i].distance = vv / 1000.0;
+		dat.points[i].angle = (hdr.angle + hdr.span * i / hdr.N) * PI / 1800;
+	}
+
+	memcpy(&chk, pdat, 2);
+
+	if (with_chk != 0 && chk != sum)
+	{
+		printf("chksum cf error");
+		return 0;
+	}
+
+	memcpy(&dat, &hdr, sizeof(hdr));
+	//memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
+	//printf("get3 %d(%d)\n", hdr.angle, hdr.N);
+
+	return true;
+
+}
+
+bool GetData0xDF(const RawDataHdr3& hdr, unsigned char* pdat, int with_chk, RawData& dat)
+{
+	unsigned short sum = hdr.angle + hdr.N + hdr.span, chk;
+
+	sum += hdr.fbase;
+	sum += hdr.first;
+	sum += hdr.last;
+	sum += hdr.fend;
+
+	double dan = (hdr.last - hdr.first) / double(hdr.N - 1);
+
+	for (int i = 0; i < hdr.N; i++)
+	{
+		dat.points[i].confidence = *pdat++;
+		sum += dat.points[i].confidence;
+
+		unsigned short v = *pdat++;
+		unsigned short v2 = *pdat++;
+		unsigned short vv = (v2 << 8) | v;
+		sum += vv;
+		dat.points[i].distance = vv / 1000.0;
+		dat.points[i].angle = (hdr.first + dan * i)*PI / 18000; 
+	}
+
+	memcpy(&chk, pdat, 2);
+
+	if (with_chk != 0 && chk != sum)
+	{
+		printf("chksum df error");
+		return 0;
+	}
+
+	memcpy(&dat, &hdr, HDR2_SIZE);
+	//memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
+	//printf("get3 %d(%d)\n", hdr.angle, hdr.N);
+
+	return true;
+
+}
+
+int pack_format = 0xce;
+
 char g_uuid[32] = "";
 // translate lidar raw data to ROS laserscan message
-bool parse_data_3(int len, unsigned char* buf, RawData& dat, int& consume, int with_chk) 
+bool parse_data_x(int len, unsigned char* buf, 
+	int& span, int& is_mm, int& with_conf, 
+	RawData& dat, int& consume, int with_chk) 
 {
 	int idx = 0;
 	while (idx < len-18)
 	{
 		if (buf[idx] == 'S' && buf[idx+1] == 'T' && buf[idx+6] == 'E' && buf[idx+7] == 'D')
 		{
+			unsigned char flag = buf[idx + 2];
+			span = 360;
+			if (flag & 0x10) span = 180;
+			if (flag & 0x20) span = 90;
+			with_conf = flag & 2;
+			is_mm = flag & 1;
 			idx += 8;
 		}
-		if (buf[idx] != 0xce || buf[idx+1] != 0xfa)
+
+		if (buf[idx + 1] == 0xfa && (buf[idx] == 0xdf || buf[idx] == 0xce || buf[idx] == 0xcf))
+		{
+			// found;
+			pack_format = buf[idx];
+		}
+		else
 		{
 			idx++;
 			continue;
@@ -180,7 +327,7 @@ bool parse_data_3(int len, unsigned char* buf, RawData& dat, int& consume, int w
 		{
 			// get product SN
 			if (memcmp(buf+i, "PRODUCT SN: ", 12) == 0)
-		       	{
+			{
 				memcpy(g_uuid, buf+i+12, 9);
 				g_uuid[9] = 0;
 				printf("found product SN : %s\n", g_uuid);
@@ -190,77 +337,76 @@ bool parse_data_3(int len, unsigned char* buf, RawData& dat, int& consume, int w
 		RawDataHdr hdr;
 		memcpy(&hdr, buf+idx, HDR_SIZE);
 
-		if ((hdr.angle % 360) != 0) 
+		if ((hdr.angle % 90) != 0) 
 		{
 			printf("bad angle %d\n", hdr.angle);
 			idx += 2;
 			continue; 
 		}
 
-		if (hdr.N > 300 || hdr.N < 30) 
+		if (hdr.N > MAX_POINTS || hdr.N < 10) 
 		{
 			printf("points number %d seem not correct\n", hdr.N);
 			idx += 2;
 			continue;
 		}
 
-		if (idx + HDR_SIZE + hdr.N*3 + 2 > len)
+		bool got;
+		if (buf[idx] == 0xce && idx + HDR_SIZE + hdr.N * 3 + 2 <= len)
 		{
+			got = GetData0xCE(hdr, buf + idx + HDR_SIZE, 
+				hdr.angle == 3420 ? span*2 : span, 
+				with_chk, dat);
+			consume = idx + HDR_SIZE + 3 * hdr.N + 2;
+		}
+		else if (buf[idx] == 0xdf && idx + hdr.N * 3 + 18 <= len)
+		{
+			RawDataHdr3 hdr3;
+			memcpy(&hdr3, buf + idx, HDR3_SIZE);
+			got = GetData0xDF(hdr3, buf + idx + HDR3_SIZE, with_chk, dat);
+			consume = idx + HDR3_SIZE + 3 * hdr.N + 2;
+		}
+		else if (buf[idx] == 0xcf && idx + HDR2_SIZE + hdr.N * 3 + 2 <= len)
+		{
+			RawDataHdr2 hdr2;
+			memcpy(&hdr2, buf + idx, HDR2_SIZE);
+			got = GetData0xCF(hdr2, buf + idx + HDR2_SIZE, with_chk, dat);
+			consume = idx + HDR2_SIZE + 3 * hdr.N + 2;
+		} else {
 			// data packet not complete
 			break;
 		}
-
-		// calc checksum
-		unsigned short sum = hdr.angle + hdr.N, chk;
-		unsigned char* pdat = buf+idx+HDR_SIZE;
-		for (int i=0; i<hdr.N; i++)
-		{
-			dat.confidence[i] = *pdat++;
-			sum += dat.confidence[i];
-
-			unsigned short v = *pdat++;
-			unsigned short v2 = *pdat++;
-			dat.distance[i] = (v2<<8) | v;
-
-			sum += dat.distance[i];
-		}
-
-		memcpy(&chk, pdat, 2);
-
-		if (with_chk != 0 && chk != sum) 
-		{
-			printf("chksum3 error");
-			consume = idx + HDR_SIZE + 3*hdr.N + 2;
-			return 0;
-		}
-
-		memcpy(&dat, &hdr, HDR_SIZE);
-		//memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
-		//printf("get3 %d(%d)\n", hdr.angle, hdr.N);
-		
-		idx += HDR_SIZE + 3*hdr.N + 2;
-		consume = idx;
-		return true;
+		return got;
 	}
 
 	if (idx > 1024) consume = idx/2;
 	return false;
 }
 
-bool parse_data(int len, unsigned char* buf, RawData& dat, int is_mm, int with_conf, int& consume, int with_chk) 
+bool parse_data(int len, unsigned char* buf, 
+	int& span, int& is_mm, int& with_conf, 
+	RawData& dat, int& consume, int with_chk) 
 {
 	int idx = 0;
 	while (idx < len-180)
 	{
 		if (buf[idx] == 'S' && buf[idx+1] == 'T' && buf[idx+6] == 'E' && buf[idx+7] == 'D')
 		{
-			idx+=8;
+			unsigned char flag = buf[idx + 2];
+			span = 360;
+			if (flag & 0x10) span = 180;
+			if (flag & 0x20) span = 90;
+			with_conf = flag & 2;
+			is_mm = flag & 1;
+			idx += 8;
 		}
+		
 		if (buf[idx] != 0xce || buf[idx+1] != 0xfa)
 		{
 			idx++;
 			continue;
 		}
+		pack_format = buf[idx];
 			
 		if (idx > 24) for (int i=0; i<idx-22; i++) 
 		{
@@ -307,13 +453,15 @@ bool parse_data(int len, unsigned char* buf, RawData& dat, int is_mm, int with_c
 
 			if (with_conf)
 			{
-				dat.confidence[i] = val >> 13;
-			       	dat.distance[i] = val & 0x1fff;
-				if (is_mm == 0) dat.distance[i] *= 10;
+				dat.points[i].confidence = val >> 13;
+				dat.points[i].distance = val & 0x1fff;
+				dat.points[i].distance /= (is_mm ? 1000.0 : 100.0) ;
 			} else {
-				dat.confidence[i] = is_mm ? val : val*10;
-				dat.confidence[i] = 0;
+				dat.points[i].confidence = is_mm ? val : val*10;
+				dat.points[i].confidence = 0;
 			}
+
+			dat.points[i].angle = (hdr.angle + 360 * i / hdr.N) * PI / 1800;
 
 			sum += val;
 		}
@@ -345,7 +493,7 @@ int uart_talk(int fd, int n, const char* cmd,
 	printf("send command : %s\n", cmd);
 	write(fd, cmd, n);
 			
-	char buf[1024];
+	char buf[2048];
 	int nr = read(fd, buf, sizeof(buf));
 
 	while (nr < (int)sizeof(buf))
@@ -375,49 +523,82 @@ int uart_talk(int fd, int n, const char* cmd,
 	return -1;
 }
 
-
 void data_process(int n, DataPoint* points)
 {
-	printf("360°数据点数 %d\n", n);
+	printf("%x : 360°数据点数 %d\n", pack_format, n);
+	FILE* fp = fopen("last.txt", "w");
+	if (fp) {
+		for (int i = 0; i < n; i++)
+		{
+			fprintf(fp, "%.5f\t%.3f\t%d\n",
+				points[i].angle, points[i].distance, points[i].confidence);
+		}
+		fclose(fp);
+	}
 }
 
-RawData dat360[10];
-// 每次获得36°扇区数据
-void data_process(RawData* data)
+
+using namespace std;
+vector<RawData*> datas;
+
+
+// 每次获得一个扇区（9°/ 36°)数据
+void data_process(const RawData& raw)
 {
 	// int mi = 100000;
 	// for (int i=0; i<data->N; i++) {
 	// if (data->distance[i] > 0 && mi > data->distance[i])
 	// mi = data->distance[i];
 	// }
-	//printf("角度 %d, 数据点数 %d\n", data->angle/10, data->N);
+	//printf("角度 %d, 数据点数 %d + %d\n", raw.angle/10, raw.N, raw.span);
 
-	dat360[data->angle/360] = *data;
-	if (data->angle != 3600-360) return ;
-	
-	int count = 0, n = 0;
-	for (int i=0; i<10; i++) {
-		if (dat360[i].N > 0)
-			n++;
-	       	count += dat360[i].N;
+	RawData* data = new RawData;
+	memcpy(data, &raw, sizeof(RawData));
+	datas.push_back(data);
+
+	if (raw.angle + raw.span != 3600)
+	{
+		return;
 	}
-	if (n != 10) return;
+	
+	int count = 0, n = 0, angles = 0;
+	for (vector<RawData*>::iterator it = datas.begin(); it != datas.end(); ++it)
+	{
+		data = *it;
+		angles += data->span;
+		count += data->N;
+		n++;
+	}
+	
+	if (angles != 3600)
+	{
+		printf("angle sum %d, drop %d fans %d points\n", angles, n, count);
+		for (vector<RawData*>::iterator it = datas.begin(); it != datas.end(); ++it)
+		{
+			data = *it;
+			delete data;
+		}
+		datas.clear();
+	}
 
 	DataPoint* points = new DataPoint[count];
 	count = 0;
-	for (int i=0; i<10; i++) 
+
+	for (vector<RawData*>::iterator it = datas.begin(); it != datas.end(); ++it)
 	{
-		for (int j=0; j<dat360[i].N; j++)
-		{
-			points[count].angle = (36*i + j*36.0/dat360[i].N) * PI / 360;
-			points[count].distance = dat360[i].distance[j] / 1000.0;
-			count++;
+		data = *it;
+		for (int i = 0; i < data->N; i++) {
+			points[count++] = data->points[i];
 		}
-		dat360[i].N = 0;
+		delete data;
 	}
+	datas.clear();
+
 	data_process(count, points);
 	delete points;
 }
+
+
 
 int main(int argc, char **argv)
 {
@@ -426,8 +607,8 @@ int main(int argc, char **argv)
 	int tcp_port = 5000; 			// 雷达的TCP端口
 	int with_chk = 1; 		// 使能数据校验
 
-	if (argc < 5) {
-		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度\n");
+	if (argc < 6) {
+		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...]\n");
 		return -1;
 	}
 	
@@ -435,6 +616,7 @@ int main(int argc, char **argv)
 	int baud_rate = atoi(argv[2]); 		// 串口波特率
 	int unit_is_mm = atoi(argv[3]); 	// 数据是毫米为单位,厘米时为0
 	int with_confidence = atoi(argv[4]); 	// 数据中带有强度
+	int resample = atoi(argv[5]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
 	
 	//int mirror =  0;
 	//int from_zero = 0;
@@ -481,16 +663,33 @@ int main(int argc, char **argv)
 		{
 			printf("set LiDAR confidence to %s\n", buf);
 		}
+
+		if (resample == 0)
+			strcpy(buf, "LSRES:000H");
+		else if (resample == 1)
+			strcpy(buf, "LSRES:001H");
+		else if (resample > 100 && resample < 1000)
+			sprintf(buf, "LSRES:%03dH", resample);
+		else
+			buf[0] = 0;
+
+		if (buf[0]) {
+			char buf2[32];
+			if (uart_talk(fd_uart, 10, buf, 15, "set resolution ", 1, buf2) == 0)
+			{
+				printf("set LiDAR resample to %d\n", resample);
+			}
+		}
 	}
 
 	unsigned char* buf = new unsigned char[BUF_SIZE];
 	int buf_len = 0;
 
-	memset(dat360, 0, sizeof(RawData)*10);
 
 	FILE* fp_rec = NULL;// fopen("/tmp/rec.dat", "ab");
 
 	bool should_publish = false;
+	int fan_span = 360;
 	while (1)
 	{ 
 		if (type == "tcp" && fd_tcp < 0) 
@@ -541,7 +740,7 @@ int main(int argc, char **argv)
 
 		if (ret == 0) 
 		{
-			printf("read data timeout");
+			printf("read data timeout\n");
 			if (fd_tcp > 0) {
 				close(fd_tcp);
 				fd_tcp = -1;
@@ -550,7 +749,7 @@ int main(int argc, char **argv)
 		}
 		
 		if (ret < 0) {
-			printf("select error");
+			printf("select error\n");
 			return -1;
 		}
 
@@ -559,7 +758,7 @@ int main(int argc, char **argv)
 		{
 			int nr = read(fd_uart, buf+buf_len, BUF_SIZE - buf_len);
 			if (nr <= 0) {
-				printf("read port %d error %d", buf_len, nr);
+				printf("read port %d error %d\n", buf_len, nr);
 				break;
 			}
 
@@ -593,14 +792,19 @@ int main(int argc, char **argv)
 			RawData dat;
 			bool is_pack;
 			if (unit_is_mm && with_confidence)
-				is_pack = parse_data_3(buf_len, buf, dat, consume, with_chk);
-			else
-				is_pack = parse_data(buf_len, buf, dat, 
-						unit_is_mm, with_confidence, consume,
-						with_chk);
+			{
+				is_pack = parse_data_x(buf_len, buf, 
+					fan_span,unit_is_mm, with_confidence,
+					dat, consume, with_chk);
+			}
+			else {
+				is_pack = parse_data(buf_len, buf, 
+					fan_span, unit_is_mm, with_confidence, 
+					dat, consume, with_chk);
+			}
 			if (is_pack)
 			{
-				data_process(&dat);
+				data_process(dat);
 			}
 
 			if (consume > 0) 
