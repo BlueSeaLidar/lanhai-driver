@@ -10,7 +10,7 @@ sudo chmod 666 /dev/ttyUSB0
 # for LDS-40D-B20R 
 ./lidar /dev/ttyUSB0 1000000 1 1 200
 
-#if your lidar model is LDS-15D-B25R or LDS-40D-B20R:
+# if your lidar model is LDS-15D-B25R or LDS-25D-B25R:
 ./lidar /dev/ttyUSB0 768000 1 1 200
 
 # for LDS-50C-B40R 
