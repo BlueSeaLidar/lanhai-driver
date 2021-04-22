@@ -607,8 +607,8 @@ int main(int argc, char **argv)
 	int tcp_port = 5000; 			// 雷达的TCP端口
 	int with_chk = 1; 		// 使能数据校验
 
-	if (argc < 6) {
-		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...]\n");
+	if (argc < 8) {
+		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑\n");
 		return -1;
 	}
 	
@@ -617,6 +617,8 @@ int main(int argc, char **argv)
 	int unit_is_mm = atoi(argv[3]); 	// 数据是毫米为单位,厘米时为0
 	int with_confidence = atoi(argv[4]); 	// 数据中带有强度
 	int resample = atoi(argv[5]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
+	int with_deshadow = atoi(argv[6]); // 去拖点，0：关闭，1：开启
+	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
 	
 	//int mirror =  0;
 	//int from_zero = 0;
@@ -647,10 +649,10 @@ int main(int argc, char **argv)
 			return -1;
 		}
 
-		if (uart_talk(fd_uart, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0)
-	       	{
-		       	printf("get product SN : %s\n", g_uuid);
-	       	}
+		if (uart_talk(fd_uart, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
+		{
+			 printf("get product SN : %s\n", g_uuid);
+		}
 
 		if (uart_talk(fd_uart, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
 					10, "SET LiDAR ", 9, buf) == 0)
@@ -662,6 +664,18 @@ int main(int argc, char **argv)
 					6, "LiDAR ", 5, buf) == 0)
 		{
 			printf("set LiDAR confidence to %s\n", buf);
+		}
+
+		if (uart_talk(fd_uart, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
+					6, "LiDAR ", 5, buf) == 0)
+		{
+			printf("set deshadow to %d\n", with_deshadow);
+		}
+
+		if (uart_talk(fd_uart, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
+					6, "LiDAR ", 5, buf) == 0)
+		{
+			printf("set smooth to %d\n", with_smooth);
 		}
 
 		if (resample == 0)
