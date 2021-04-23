@@ -32,7 +32,7 @@
 extern "C" int change_baud(int fd, int baud);
 
 
-#define PI 3.14159265
+#define PI 3.1415926535898
 
 #define HDR_SIZE 6
 #define HDR2_SIZE 8
@@ -195,7 +195,7 @@ bool GetData0xCE(const RawDataHdr& hdr, unsigned char* pdat, int span, int with_
 		unsigned short vv = (v2<<8) | v;
 		dat.points[i].distance = vv / 1000.0;
 		sum += vv;
-		dat.points[i].angle = (hdr.angle + span * i / hdr.N) * PI / 1800;
+		dat.points[i].angle = (hdr.angle + (double)span * i / hdr.N) * PI / 1800;
 	}
 
 	memcpy(&chk, pdat, 2);
@@ -231,7 +231,7 @@ bool GetData0xCF(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawD
 
 		sum += vv;
 		dat.points[i].distance = vv / 1000.0;
-		dat.points[i].angle = (hdr.angle + hdr.span * i / hdr.N) * PI / 1800;
+		dat.points[i].angle = (hdr.angle + hdr.span * i / (double)hdr.N) * PI / 1800;
 	}
 
 	memcpy(&chk, pdat, 2);
@@ -461,7 +461,7 @@ bool parse_data(int len, unsigned char* buf,
 				dat.points[i].confidence = 0;
 			}
 
-			dat.points[i].angle = (hdr.angle + 360 * i / hdr.N) * PI / 1800;
+			dat.points[i].angle = (hdr.angle + 360.0 * i / hdr.N) * PI / 1800;
 
 			sum += val;
 		}
@@ -531,7 +531,8 @@ void data_process(int n, DataPoint* points)
 		for (int i = 0; i < n; i++)
 		{
 			fprintf(fp, "%.5f\t%.3f\t%d\n",
-				points[i].angle, points[i].distance, points[i].confidence);
+				points[i].angle > PI ? points[i].angle-2*PI : points[i].angle, 
+				points[i].distance, points[i].confidence);
 		}
 		fclose(fp);
 	}
@@ -556,7 +557,7 @@ void data_process(const RawData& raw)
 	memcpy(data, &raw, sizeof(RawData));
 	datas.push_back(data);
 
-	if (raw.angle + raw.span != 3600)
+	if (raw.angle + raw.span != 1800)
 	{
 		return;
 	}
