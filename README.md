@@ -8,16 +8,20 @@ souce ./build.sh #compile the demo programs
 sudo chmod 666 /dev/ttyUSB0
 
 # for LDS-40D-B20R 
-./lidar /dev/ttyUSB0 1000000 1 1 200
+./bin/uart-demo /dev/ttyUSB0 1000000 1 1 200 1 1
 
 # if your lidar model is LDS-15D-B25R or LDS-25D-B25R:
-./lidar /dev/ttyUSB0 768000 1 1 200
+./bin/uart-demo /dev/ttyUSB0 768000 1 1 200 1 1
 
 # for LDS-50C-B40R 
-./lidar /dev/ttyUSB0 1000000 1 1 400
+./bin/uart-demo /dev/ttyUSB0 1000000 1 1 400 1 1
 
 # if your lidar model is LDS-15BDM or LDS-25BDM:
-./lidar /dev/ttyUSB0 230400 0 1
+./bin/uart-demo /dev/ttyUSB0 230400 0 1 0 0 0
 
 # if your lidar model is LDS-50C-2 :
-./lidar /dev/ttyUSB0 500000 1 1
+./bin/uart-demo /dev/ttyUSB0 500000 1 1 0 1 1
+
+# if your lidar model is LDS-U50C-S :
+./bin/udp-demo 192.168.158.91 5000 5100 1 1 1 1
+
