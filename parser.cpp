@@ -6,7 +6,7 @@
 #include <time.h>
 #include "data.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 
 #include <windows.h>
 void gettimeofday(timeval* tv, void*)
