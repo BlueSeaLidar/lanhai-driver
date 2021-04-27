@@ -11,7 +11,8 @@ vector<RawData*> datas;
 // 360 数据
 void data_process(int n, DataPoint* points)
 {
-	printf("%x : 360°数据点数 %d\n", pack_format, n);
+	printf("%x : 360 data points %d\n", pack_format, n);
+#if 0
 	FILE* fp = fopen("last.txt", "w");
 	if (fp) {
 		for (int i = 0; i < n; i++)
@@ -22,6 +23,7 @@ void data_process(int n, DataPoint* points)
 		}
 		fclose(fp);
 	}
+#endif
 }
 
 // 每次获得一个扇区（9°/ 36°)数据
