@@ -262,6 +262,43 @@ bool GetData0xCE(const RawDataHdr& hdr, unsigned char* pdat, int span, int with_
 	return true;
 }
 
+bool GetData0x9D(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawData& dat)
+{
+	unsigned short sum = hdr.angle + hdr.N + hdr.span, chk;
+
+	for (int i = 0; i < hdr.N; i++)
+	{
+		dat.points[i].confidence = 1;// *pdat++;
+		//sum += dat.points[i].confidence;
+
+		unsigned short v = *pdat++;
+		unsigned short v2 = *pdat++;
+
+		unsigned short vv = (v2 << 8) | v;
+
+		sum += vv;
+		dat.points[i].distance = vv / 1000.0;
+		dat.points[i].angle = (hdr.angle + hdr.span * i / (double)hdr.N) * PI / 1800;
+	}
+
+	memcpy(&chk, pdat, 2);
+
+	if (with_chk != 0 && chk != sum)
+	{
+		printf("chksum cf error");
+		return 0;
+	}
+
+	memcpy(&dat, &hdr, sizeof(hdr));
+	//memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
+	//printf("get3 %d(%d)\n", hdr.angle, hdr.N);
+
+	return true;
+
+}
+
+
+
 bool GetData0xCF(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawData& dat)
 {
 	unsigned short sum = hdr.angle + hdr.N + hdr.span, chk;
@@ -359,7 +396,7 @@ bool parse_data_x(int len, unsigned char* buf,
 			idx += 8;
 		}
 
-		if (buf[idx + 1] == 0xfa && (buf[idx] == 0xdf || buf[idx] == 0xce || buf[idx] == 0xcf || buf[idx] == 0xc7))
+		if (buf[idx + 1] == 0xfa && (buf[idx] == 0xdf || buf[idx] == 0xce || buf[idx] == 0xcf || buf[idx] == 0xc7 || buf[idx] == 0x9d))
 		{
 			// found;
 			pack_format = buf[idx];
@@ -405,6 +442,13 @@ bool parse_data_x(int len, unsigned char* buf,
 				hdr.angle == 3420 ? span*2 : span, 
 				with_chk, dat);
 			consume = idx + HDR_SIZE + 3 * hdr.N + 2;
+		}
+		else if (buf[idx] == 0x9d && idx + hdr.N * 2 + 10 <= len)
+		{
+			RawDataHdr2 hdr2;
+			memcpy(&hdr2, buf + idx, HDR2_SIZE);
+			got = GetData0x9D(hdr2, buf + idx + HDR2_SIZE, with_chk, dat);
+			consume = idx + HDR2_SIZE + 2 * hdr.N + 2;
 		}
 		else if (buf[idx] == 0xdf && idx + hdr.N * 3 + 18 <= len)
 		{
