@@ -302,7 +302,7 @@ int main(int argc, char **argv)
 			int consume = 0; 
 			RawData dat;
 			bool is_pack;
-			if (unit_is_mm）// && with_confidence)
+			if (unit_is_mm)// && with_confidence)
 			{
 				is_pack = parse_data_x(buf_len, buf, 
 					fan_span,unit_is_mm, with_confidence,
