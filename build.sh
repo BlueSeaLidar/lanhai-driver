@@ -1,6 +1,6 @@
 #!/bin/sh
 
-mkdir bin
+[ -e bin ] || mkdir bin
 gcc -c -o ./bin/uart.o uart.c
 # g++ -o record record.cpp uart.o
 g++ -o ./bin/uart-demo parser.cpp user.cpp uart_demo.cpp ./bin/uart.o

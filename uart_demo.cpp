@@ -148,6 +148,7 @@ int uart_talk(int fd, int n, const char* cmd,
 			return 0;
 		}
 	}
+#if 0
 	char path[256];
 	sprintf(path, "/tmp/%s.dat", hdr_str);
 	FILE* fp = fopen(path, "wb");
@@ -155,6 +156,7 @@ int uart_talk(int fd, int n, const char* cmd,
 		fwrite(buf, 1, sizeof(buf), fp);
 		fclose(fp);
 	}
+#endif
 
 	printf("read %d bytes, not found %s\n", nr, hdr_str);
 	return -1;
@@ -220,6 +222,7 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 			printf("set LiDAR resample to %d\n", resample);
 		}
 	}
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -321,11 +324,13 @@ int main(int argc, char **argv)
 			if (consume > 0) 
 			{
 				if (!is_pack) {
+#if 0
 					FILE* fp = fopen("/tmp/bad.dat", "ab");
 					if (fp) {
 						fwrite(buf, 1, consume, fp);
 						fclose(fp);
 					}
+#endif
 					printf("drop %d bytes: %02x %02x %02x %02x %02x %02x", 
 							consume,
 							buf[0], buf[1], buf[2],

@@ -1,12 +1,16 @@
 // 解析后的数据可以在 data_process 分析
 // 请根据实际连接方式修改main函数中对应参数
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <vector>
 #include "data.h"
 
 using namespace std;
-vector<RawData*> datas;
+
+#define MAX_FANS 40
+RawData* datas[MAX_FANS] = {NULL};
+
 
 // 360 数据
 void data_process(int n, DataPoint* points)
@@ -26,6 +30,8 @@ void data_process(int n, DataPoint* points)
 #endif
 }
 
+#if 0
+vector<RawData*> datas;
 // 每次获得一个扇区（9°/ 36°)数据
 void data_process(const RawData& raw)
 {
@@ -82,7 +88,115 @@ void data_process(const RawData& raw)
 	delete points;
 }
 
+#else
 
+double calc_res()
+{
+	double sum = 0; 
+	int cnt = 0;
+	for (int i=0; i<MAX_FANS; i++) 
+	{
+		if (datas[i] != NULL) {
+			sum += datas[i]->span;
+			cnt += datas[i]->N;
+		}
+	}
+	return sum/cnt;
+}
+
+int fill_zero(int from, int to, double res, DataPoint* points)
+{
+	printf("fill hole %d ~ %d : %f\n", from, to, res);
+	int N = (to - from) / res;
+	for (int j=0; j<N; j++) 
+	{
+		points[j].angle = (from + j * res) * PI / 1800;
+		points[j].distance = 0;
+		points[j].confidence = 0;
+	}
+	return N;
+}
+
+int data_publish(int from, int to, double res, DataPoint* points)
+{
+	int M = from / 90, N = to/90, count = 0;
+	
+	for (int i=M; i<N; i++)
+	{
+		RawData* data = datas[i];
+		if (data == NULL) continue;
+
+		if (from < data->angle) 
+		{
+			count += fill_zero(from, data->angle, res, points+count);
+		}
+			
+		for (int j = 0; j < data->N; j++) 
+		{
+			 points[count++] = data->points[j];
+		}
+		from = data->angle + data->span;
+	}
+
+	if (from < to) 
+	{
+		count += fill_zero(from, to, res, points+count);
+	}
+
+	return count;
+}
+
+void data_publish(DataPoint* points)
+{
+	double res = calc_res();
+
+	int count = data_publish(1800, 3600, res, points);
+
+	count += data_publish(0, 1800, res, points+count);
+
+	for (int i=0; i<MAX_FANS; i++) {
+		delete datas[i];
+		datas[i] = NULL;
+	}
+		
+	data_process(count, points);
+}
+
+DataPoint g_points[10000];
+// 每次获得一个扇区（9°/ 36°)数据
+void data_process(const RawData& raw)
+{
+	//if ((rand() % 100) == 50) {
+	//printf("角度 %d, 数据点数 %d + %d\n", raw.angle/10, raw.N, raw.span);
+	//return ;
+	//}
+
+	RawData* data = new RawData;
+	memcpy(data, &raw, sizeof(RawData));
+
+	int idx = raw.angle / 90;
+
+	if (datas[idx] != NULL) 
+	{
+		if (data->angle >= 1800)
+		{
+			data_publish(g_points);
+		}
+		else {
+			delete datas[idx];
+			datas[idx] = NULL;
+		}
+	}
+		
+	datas[idx] = data;
+	if (raw.angle + raw.span == 1800)
+	{
+		data_publish(g_points);
+	}
+}
+
+
+#endif
 
 
 

@@ -239,6 +239,7 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 			printf("set LiDAR resample to %d\n", resample);
 		}
 	}
+	return 0;
 }
 
 int main(int argc, char **argv)
