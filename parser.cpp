@@ -421,7 +421,7 @@ bool parse_data_x(int len, unsigned char* buf,
 		RawDataHdr hdr;
 		memcpy(&hdr, buf+idx, HDR_SIZE);
 
-		if ((hdr.angle % 90) != 0) 
+		if (buf[idx] != 0xc7 && (hdr.angle % 90) != 0) 
 		{
 			printf("bad angle %d\n", hdr.angle);
 			idx += 2;
