@@ -30,7 +30,7 @@ void data_process(int n, DataPoint* points)
 #endif
 }
 
-#if 0
+#ifndef FILL_FAN_ZERO
 vector<RawData*> datas;
 // 每次获得一个扇区（9°/ 36°)数据
 void data_process(const RawData& raw)
