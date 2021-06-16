@@ -9,7 +9,6 @@
 using namespace std;
 
 #define MAX_FANS 40
-RawData* datas[MAX_FANS] = {NULL};
 
 
 // 360 数据
@@ -89,6 +88,7 @@ void data_process(const RawData& raw)
 }
 
 #else
+RawData* datas[MAX_FANS] = {NULL};
 
 double calc_res()
 {
