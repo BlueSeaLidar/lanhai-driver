@@ -109,11 +109,12 @@ static void PackFanData(FanSegment* seg, RawData& rdat)
 	int count = 0;
 	while (seg)
 	{
+		double s = PI / 180000.0;
 		for (int i = 0; i < seg->hdr.N; i++, count++)
 		{
 			dat->points[count].confidence = seg->energy[i];
 			dat->points[count].distance = seg->dist[i];
-			dat->points[count].angle = (seg->angle[i] + seg->hdr.beg_ang) / 1000.0;
+			dat->points[count].angle = (seg->angle[i] + seg->hdr.beg_ang) * s;
 		}
 
 		seg = seg->next;
