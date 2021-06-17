@@ -37,7 +37,13 @@ struct CmdHeader
 	unsigned short sn;
 	unsigned short len;
 };
-
+struct KeepAlive {
+	uint32_t world_clock;
+	uint32_t mcu_hz;
+	uint32_t arrive;
+	uint32_t delay;
+	uint32_t reserved[4];
+};
 // CRC32
 unsigned int stm32crc(unsigned int *ptr, unsigned int len)
 {
@@ -185,15 +191,7 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 	//write(g_port, buf, strlen(buf));
 	char buf[32];
 	int nr = 0;
-	for (int i=0; i<300 && nr<=0; i++) { 
-		usleep(10000);
-		nr = read(fd_udp, buf, sizeof(buf));
-	}
-	if (nr <= 0) {
-		printf("serial port seem not working\n");
-		return -1;
-	}
-
+	
 	if (udp_talk(fd_udp, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
 	{
 			printf("get product SN : %s\n", g_uuid);
@@ -246,8 +244,8 @@ int main(int argc, char **argv)
 {
 	int with_chk = 1; 		// 使能数据校验
 
-	if (argc < 8) {
-		printf("usage : ./udp_lidar_demo 雷达地址 雷达端口 本地端口 单位是毫米 数据中带有强度 去拖点 平滑\n");
+	if (argc < 9) {
+		printf("usage : ./udp_lidar_demo 雷达地址 雷达端口 本地端口 单位是毫米 数据中带有强度 去拖点 平滑 重采样\n");
 		return -1;
 	}
 	
@@ -256,9 +254,9 @@ int main(int argc, char **argv)
 	int local_port = atoi(argv[3]); 			// 雷达的端口
 	int unit_is_mm = atoi(argv[4]); 	// 数据是毫米为单位,厘米时为0
 	int with_confidence = atoi(argv[5]); 	// 数据中带有强度
-	// int resample = atoi(argv[5]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
 	int with_deshadow = atoi(argv[6]); // 去拖点，0：关闭，1：开启
 	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
+	int resample = atoi(argv[8]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
 	
 	// open UDP port
 	int fd_udp  = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -279,33 +277,70 @@ int main(int argc, char **argv)
 	char cmd[12] = "LGCPSH";
 	rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, rand(), 6, cmd);
 
-	//setup_lidar(fd_udp, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
+	int fd_cmd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	setup_lidar(fd_cmd, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
 
 	unsigned char* buf = new unsigned char[BUF_SIZE];
 	int buf_len = 0;
 
 	FILE* fp_rec = NULL;// fopen("/tmp/rec.dat", "ab");
 
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	time_t tto = tv.tv_sec + 1;
+	uint32_t delay = 0;
+
 	bool should_publish = false;
 	int fan_span = 360;
+
 	while (1)
 	{ 
 		fd_set fds;
 		FD_ZERO(&fds); 
 		FD_SET(fd_udp, &fds); 
+		FD_SET(fd_cmd, &fds); 
+		int fd_max = fd_udp > fd_cmd ? fd_udp : fd_cmd;
 		
 		struct timeval to = { 10, 1 };
-		int ret = select(fd_udp+1, &fds, NULL, NULL, &to); 
+		int ret = select(fd_max+1, &fds, NULL, NULL, &to); 
+
+		gettimeofday(&tv, NULL);
+		if (tv.tv_sec > tto) 
+		{
+			KeepAlive alive;
+			gettimeofday(&tv, NULL);
+			alive.world_clock = (tv.tv_sec % 3600) * 1000 + tv.tv_usec/1000;
+			alive.delay = delay;
+
+			// acknowlege device 
+			//int rt = send_cmd_udp(fd_udp, info->lidar_ip, info->lidar_port, 0x4753, rand(), 0, NULL);
+			send_cmd_udp_f(fd_cmd, lidar_ip, lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
+
+			tto = tv.tv_sec + 1;
+		}
 
 		if (ret == 0) 
 		{
-			rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, rand(), 6, cmd);
+			rt = send_cmd_udp(fd_cmd, lidar_ip, lidar_port, 0x0043, rand(), 6, cmd);
 			continue;
 		}
 		
 		if (ret < 0) {
 			printf("select error\n");
 			return -1;
+		}
+
+		
+		// read UDP command response
+		if (FD_ISSET(fd_cmd, &fds)) 
+		{
+			sockaddr_in addr;
+			socklen_t sz = sizeof(addr);
+
+			int len = recvfrom(fd_cmd, buf, BUF_SIZE, 0, (struct sockaddr *)&addr, &sz);
+			if (len > 0) {
+			}
 		}
 		
 		// read UDP data
