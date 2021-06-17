@@ -12,8 +12,10 @@ using namespace std;
 
 
 // 360 数据
-void data_process(int n, DataPoint* points)
+void data_process(int n, DataPoint* points, uint32_t* timestamp = NULL)
 {
+	if (timestamp != NULL)
+		printf("%d.%d ", timestamp[0], timestamp[1]);
 	printf("%x : 360 data points %d\n", pack_format, n);
 #if 0
 	FILE* fp = fopen("last.txt", "w");
@@ -50,12 +52,19 @@ void data_process(const RawData& raw)
 		return;
 	}
 	
+	bool bfirst = true;
+	uint32_t timestamp[2] = {0};
 	int count = 0, n = 0, angles = 0;
 	for (vector<RawData*>::iterator it = datas.begin(); it != datas.end(); ++it)
 	{
 		data = *it;
 		angles += data->span;
 		count += data->N;
+		if (bfirst) {
+			timestamp[0] = data->ts[0];
+			timestamp[1] = data->ts[1];
+			bfirst = false;
+		}
 		n++;
 	}
 	
@@ -83,7 +92,7 @@ void data_process(const RawData& raw)
 	}
 	datas.clear();
 
-	data_process(count, points);
+	data_process(count, points, timestamp);
 	delete points;
 }
 
