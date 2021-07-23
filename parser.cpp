@@ -578,6 +578,7 @@ bool parse_data(int len, unsigned char* buf,
 		}
 
 		memcpy(&dat, &hdr, HDR_SIZE);
+		dat.span = 360;
 		// memcpy(dat.data, buf+idx+HDR_SIZE, 2*hdr.N);
 
 		idx += HDR_SIZE + 2*hdr.N + 2;
