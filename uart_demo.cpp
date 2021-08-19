@@ -177,7 +177,7 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		return -1;
 	}
 
-	if (uart_talk(fd_uart, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
+	if (uart_talk(fd_uart, 6, "LUUIDH", 12, "PRODUCT SN: ", 11, g_uuid) == 0) 
 	{
 			printf("get product SN : %s\n", g_uuid);
 	}
