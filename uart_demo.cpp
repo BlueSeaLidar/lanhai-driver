@@ -161,7 +161,23 @@ int uart_talk(int fd, int n, const char* cmd,
 	printf("read %d bytes, not found %s\n", nr, hdr_str);
 	return -1;
 }
-
+int strip(const char* s, char* buf)
+{
+        int len = 0;
+        for (int i=0; s[i] != 0; i++)
+        {
+                if (s[i] >= 'a' && s[i] <= 'z')
+                        buf[len++] = s[i];
+                else if (s[i] >= 'A' && s[i] <= 'Z')
+                        buf[len++] = s[i];
+                else if (s[i] >= '0' && s[i] <= '9')
+                        buf[len++] = s[i];
+		else if (len > 0)
+			break;
+        }
+        buf[len] = 0;
+        return len;
+}
 int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, int with_deshadow, int with_smooth)
 {
 	//char buf[] = "LUUIDH";
@@ -177,9 +193,10 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		return -1;
 	}
 
-	if (uart_talk(fd_uart, 6, "LUUIDH", 12, "PRODUCT SN: ", 11, g_uuid) == 0) 
+	if (uart_talk(fd_uart, 6, "LUUIDH", 11, "PRODUCT SN:", 16, buf) == 0) 
 	{
-			printf("get product SN : %s\n", g_uuid);
+		strip(buf, g_uuid);
+		printf("get product SN : %s\n", g_uuid);
 	}
 
 	if (uart_talk(fd_uart, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
