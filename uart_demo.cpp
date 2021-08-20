@@ -198,7 +198,12 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		strip(buf, g_uuid);
 		printf("get product SN : %s\n", g_uuid);
 	}
-
+	else if (uart_talk(fd_uart, 6, "LUUIDH", 10, "VENDOR ID:", 16, buf) == 0) 
+	{
+		strip(buf, g_uuid);
+		printf("get product SN : %s\n", g_uuid);
+	}
+	
 	if (uart_talk(fd_uart, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
 				10, "SET LiDAR ", 9, buf) == 0)
 	{
