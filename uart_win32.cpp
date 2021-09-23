@@ -15,14 +15,14 @@
 
 // serial port handle
 
-int uart_talk(HANDLE hCom, int n, const char* cmd, 
-		int nhdr, const char* hdr_str, 
-		int nfetch, char* fetch)
+int uart_talk(HANDLE hCom, int n, const char* cmd,
+	int nhdr, const char* hdr_str,
+	int nfetch, char* fetch)
 {
 	printf("send command : %s\n", cmd);
 	DWORD dw;
 	WriteFile(hCom, cmd, n, &dw, NULL);
-			
+
 	char buf[2048];
 	DWORD nr = 0;
 	ReadFile(hCom, buf, sizeof(buf), &nr, NULL);
@@ -34,11 +34,11 @@ int uart_talk(HANDLE hCom, int n, const char* cmd,
 		if (n > 0) nr += n;
 	}
 
-	for (int i=0; i<(int)sizeof(buf)-nhdr-nfetch; i++) 
+	for (int i = 0; i < (int)sizeof(buf) - nhdr - nfetch; i++)
 	{
-		if (memcmp(buf+i, hdr_str, nhdr) == 0) 
+		if (memcmp(buf + i, hdr_str, nhdr) == 0)
 		{
-			memcpy(fetch, buf+i+nhdr, nfetch);
+			memcpy(fetch, buf + i + nhdr, nfetch);
 			fetch[nfetch] = 0;
 			return 0;
 		}
@@ -63,7 +63,7 @@ int setup_lidar(HANDLE hCom, int unit_is_mm, int with_confidence, int resample, 
 	//write(g_port, buf, strlen(buf));
 	char buf[32];
 	DWORD nr = 0;
-	for (int i=0; i<300 && nr<=0; i++) { 
+	for (int i = 0; i < 300 && nr <= 0; i++) {
 		Sleep(10);
 
 		ReadFile(hCom, buf, sizeof(buf), &nr, NULL);
@@ -73,31 +73,31 @@ int setup_lidar(HANDLE hCom, int unit_is_mm, int with_confidence, int resample, 
 		return -1;
 	}
 
-	if (uart_talk(hCom, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
+	if (uart_talk(hCom, 6, "LUUIDH", 11, "PRODUCT SN:", 9, g_uuid) == 0)
 	{
-			printf("get product SN : %s\n", g_uuid);
+		printf("get product SN : %s\n", g_uuid);
 	}
 
-	if (uart_talk(hCom, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
-				10, "SET LiDAR ", 9, buf) == 0)
+	if (uart_talk(hCom, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH",
+		10, "SET LiDAR ", 9, buf) == 0)
 	{
 		printf("set LiDAR unit to %s\n", buf);
 	}
 
-	if (uart_talk(hCom, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
-				6, "LiDAR ", 5, buf) == 0)
+	if (uart_talk(hCom, 6, with_confidence == 0 ? "LNCONH" : "LOCONH",
+		6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set LiDAR confidence to %s\n", buf);
 	}
 
-	if (uart_talk(hCom, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
-				6, "LiDAR ", 5, buf) == 0)
+	if (uart_talk(hCom, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H",
+		6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set deshadow to %d\n", with_deshadow);
 	}
 
-	if (uart_talk(hCom, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
-				6, "LiDAR ", 5, buf) == 0)
+	if (uart_talk(hCom, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H",
+		6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set smooth to %d\n", with_smooth);
 	}
@@ -201,15 +201,15 @@ HANDLE OpenPort(const char* name, int speed)
 	return hPort;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
 	int with_chk = 1; 		// 使能数据校验
 
 	if (argc < 8) {
-		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑\n");
+		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑 数据打包模式\n");
 		return -1;
 	}
-	
+
 	char* port = argv[1];			//串口名称 "/dev/ttyUSB0"; 
 
 	int baud_rate = atoi(argv[2]); 		// 串口波特率
@@ -224,7 +224,9 @@ int main(int argc, char **argv)
 
 	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
 
-	
+	int data_bytes = 3; // 数据打包模式，2：2字节， 3：3字节
+	if (argc > 8) data_bytes = atoi(argv[8]); 
+
 	// open serial port
 	HANDLE hCom = OpenPort(port, baud_rate);
 	if (hCom == NULL) {
@@ -242,15 +244,15 @@ int main(int argc, char **argv)
 
 	int fan_span = 360;
 	while (1)
-	{ 
+	{
 		int new_data = -1;
 
 		DWORD nr = 0;
-		if (ReadFile(hCom, buf+buf_len, BUF_SIZE - buf_len, &nr, NULL))
+		if (ReadFile(hCom, buf + buf_len, BUF_SIZE - buf_len, &nr, NULL))
 		{
 			if (nr == 0) continue;
-			if (nr > 0 && fp_rec) { 
-				fwrite(buf+buf_len, 1, nr, fp_rec);
+			if (nr > 0 && fp_rec) {
+				fwrite(buf + buf_len, 1, nr, fp_rec);
 				fflush(fp_rec);
 			}
 
@@ -261,18 +263,19 @@ int main(int argc, char **argv)
 		{
 			buf_len += new_data;
 
-			int consume = 0; 
+			int consume = 0;
 			RawData dat;
 			bool is_pack;
-			if (unit_is_mm)// && with_confidence)
+			//if (unit_is_mm && with_confidence)
+			if (data_bytes == 3)
 			{
-				is_pack = parse_data_x(buf_len, buf, 
-					fan_span,unit_is_mm, with_confidence,
+				is_pack = parse_data_x(buf_len, buf,
+					fan_span, unit_is_mm, with_confidence,
 					dat, consume, with_chk);
 			}
 			else {
-				is_pack = parse_data(buf_len, buf, 
-					fan_span, unit_is_mm, with_confidence, 
+				is_pack = parse_data(buf_len, buf,
+					fan_span, unit_is_mm, with_confidence,
 					dat, consume, with_chk);
 			}
 			if (is_pack)
@@ -280,7 +283,7 @@ int main(int argc, char **argv)
 				data_process(dat);
 			}
 
-			if (consume > 0) 
+			if (consume > 0)
 			{
 				if (!is_pack) {
 					FILE* fp;
@@ -289,16 +292,16 @@ int main(int argc, char **argv)
 						fwrite(buf, 1, consume, fp);
 						fclose(fp);
 					}
-					printf("drop %d bytes: %02x %02x %02x %02x %02x %02x", 
-							consume,
-							buf[0], buf[1], buf[2],
-						       	buf[3], buf[4], buf[5]);
+					printf("drop %d bytes: %02x %02x %02x %02x %02x %02x",
+						consume,
+						buf[0], buf[1], buf[2],
+						buf[3], buf[4], buf[5]);
 				}
 
 
-				for (int i=consume; i<buf_len; i++) 
+				for (int i = consume; i < buf_len; i++)
 					buf[i - consume] = buf[i];
-				buf_len -= consume; 
+				buf_len -= consume;
 			}
 		}
 	}
@@ -306,4 +309,3 @@ int main(int argc, char **argv)
 	//close(fd);
 	return 0;
 }
-
