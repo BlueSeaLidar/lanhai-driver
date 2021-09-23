@@ -17,7 +17,7 @@ sudo chmod 666 /dev/ttyUSB0
 ./bin/uart-demo /dev/ttyUSB0 1000000 1 1 400 1 1
 
 # if your lidar model is LDS-15BDM or LDS-25BDM:
-./bin/uart-demo /dev/ttyUSB0 230400 0 1 0 0 0
+./bin/uart-demo /dev/ttyUSB0 230400 0 1 0 0 0 2
 
 # if your lidar model is LDS-50C-2 :
 ./bin/uart-demo /dev/ttyUSB0 500000 1 1 0 1 1
