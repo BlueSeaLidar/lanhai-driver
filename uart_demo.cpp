@@ -252,7 +252,7 @@ int main(int argc, char **argv)
 	int with_chk = 1; 		// 使能数据校验
 
 	if (argc < 8) {
-		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑\n");
+		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑 数据打包模式\n");
 		return -1;
 	}
 	
@@ -263,6 +263,8 @@ int main(int argc, char **argv)
 	int resample = atoi(argv[5]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
 	int with_deshadow = atoi(argv[6]); // 去拖点，0：关闭，1：开启
 	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
+	int data_bytes = 3;			// 数据打包模式：2字节 或 3字节
+	if (argc > 8) data_bytes = atoi(argv[8]);
 	
 	// open serial port
 	int fd_uart = open_serial_port(port, baud_rate);
@@ -327,7 +329,8 @@ int main(int argc, char **argv)
 			int consume = 0; 
 			RawData dat;
 			bool is_pack;
-			if (unit_is_mm)// && with_confidence)
+			//if (unit_is_mm)// && with_confidence)
+			if (data_bytes == 3)
 			{
 				is_pack = parse_data_x(buf_len, buf, 
 					fan_span,unit_is_mm, with_confidence,
