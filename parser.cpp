@@ -560,7 +560,7 @@ bool parse_data(int len, unsigned char* buf,
 				dat.points[i].distance = val & 0x1fff;
 				dat.points[i].distance /= (is_mm ? 1000.0 : 100.0) ;
 			} else {
-				dat.points[i].confidence = is_mm ? val : val*10;
+				dat.points[i].distance = is_mm ? val/1000.0 : val/100.0;
 				dat.points[i].confidence = 0;
 			}
 
