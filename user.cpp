@@ -8,7 +8,9 @@
 
 using namespace std;
 
-
+//from_zero true时从[0，pi），false时[-pi,pi)
+bool from_zero = false;
+int factor = from_zero ? 2 : 1;
 
 
 // 360 数据
@@ -23,7 +25,7 @@ void data_process(int n, DataPoint* points, uint32_t* timestamp = NULL)
 		for (int i = 0; i < n; i++)
 		{
 			fprintf(fp, "%.5f\t%.3f\t%d\n",
-				points[i].angle > PI ? points[i].angle-2*PI : points[i].angle, 
+				points[i].angle > factor*PI ? points[i].angle-2*PI : points[i].angle, 
 				points[i].distance, points[i].confidence);
 		}
 		fclose(fp);
@@ -47,7 +49,7 @@ void data_process(const RawData& raw)
 	memcpy(data, &raw, sizeof(RawData));
 	datas.push_back(data);
 
-	if (raw.angle + raw.span != 1800)
+	if (raw.angle + raw.span != factor*1800)
 	{
 		return;
 	}
