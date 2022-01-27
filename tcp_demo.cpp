@@ -102,9 +102,8 @@ int main(int argc, char **argv)
 			if (fd_max < fd_tcp) fd_max = fd_tcp;
 		}
 		
-		
 		struct timeval to = { 1, 1 };
-	       	int ret = select(fd_max+1, &fds, NULL, NULL, &to); 
+	    int ret = select(fd_max+1, &fds, NULL, NULL, &to); 
 
 		if (ret == 0) 
 		{

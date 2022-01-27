@@ -28,7 +28,9 @@
 #include <sys/socket.h>
 #include <math.h>
 #include <vector>
-
+#include <iostream>
+#include <fstream>
+#include <sstream>
 #include "data.h"
 
 extern "C" int change_baud(int fd, int baud);
@@ -40,7 +42,7 @@ int open_serial_port(const char* port, int baudrate)
 {
        	int fd = open(port,  O_RDWR | O_NOCTTY | O_NDELAY);
 	if (fd < 0) { 
-		printf("open %s error", port); 
+		printf("\033[1;31m----> Open %s error\033[0m\n", port); 
 		return -1; 
        	}
 	
@@ -178,7 +180,7 @@ int strip(const char* s, char* buf)
         buf[len] = 0;
         return len;
 }
-int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, int with_deshadow, int with_smooth)
+int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, int with_deshadow, int with_smooth, int init_rpm)
 {
 	//char buf[] = "LUUIDH";
 	//write(g_port, buf, strlen(buf));
@@ -244,47 +246,116 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 			printf("set LiDAR resample to %d\n", resample);
 		}
 	}
+
+	// setup rpm
+	if (init_rpm > 300 && init_rpm < 3000) {
+		for (int i=0; i<10; i++) 
+		{
+			char cmd[32];
+			sprintf(cmd, "LSRPM:%dH", init_rpm);
+			if (uart_talk(fd_uart, strlen(cmd), cmd, 3, "RPM", 5, buf) == 0)
+			{
+				printf("set RPM to %s\n", buf);
+				break;
+			}
+		}
+	}
 	return 0;
 }
 
 int main(int argc, char **argv)
 {
-	int with_chk = 1; 		// 使能数据校验
+	/*
+     * 1,params init
+     */
+	if (argc < 2) {
+        printf("usage : ./lidar ../params/xxx.txt\n");
+        return -1;
+    }
+    std::string file_name = argv[1];
+    std::ifstream infile;
+    infile.open(file_name.c_str());
+    std::string s;
+    std::string port,baud_rate_s,unit_is_mm_s,with_confidence_s,resample_s,with_deshadow_s,with_smooth_s,with_chk_s,raw_bytes_s,rpm_s,output_scan_s,output_360_s,from_zero_s,output_file;
+    int baud_rate,unit_is_mm,with_confidence,resample,with_deshadow,with_smooth,with_chk,data_bytes,rpm,output_scan,output_360,from_zero;
+    while (getline(infile, s)){
+        std::string tmp;
+        std::stringstream linestream(s);
+        getline(linestream, tmp, ':');
 
-	if (argc < 8) {
-		printf("usage : ./lidar 串口名称 波特率 单位是毫米 数据中带有强度 分辨率[0,1,200,225,250,300,333...] 去拖点 平滑 数据打包模式\n");
-		return -1;
-	}
-	
-	char* port = argv[1];			//串口名称 "/dev/ttyUSB0"; 
-	int baud_rate = atoi(argv[2]); 		// 串口波特率
-	int unit_is_mm = atoi(argv[3]); 	// 数据是毫米为单位,厘米时为0
-	int with_confidence = atoi(argv[4]); 	// 数据中带有强度
-	int resample = atoi(argv[5]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
-	int with_deshadow = atoi(argv[6]); // 去拖点，0：关闭，1：开启
-	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
-	int data_bytes = 3;			// 数据打包模式：2字节 或 3字节
-	if (argc > 8) data_bytes = atoi(argv[8]);
-	
-	// open serial port
-	int fd_uart = open_serial_port(port, baud_rate);
+        if(tmp == "port"){
+            getline(linestream, port, ':');
+        }else if(tmp == "baud_rate"){
+            getline(linestream, baud_rate_s, ':');
+            baud_rate = atoi(baud_rate_s.c_str());
+        }else if(tmp == "with_confidence"){
+            getline(linestream, with_confidence_s, ':');
+            with_confidence = atoi(with_confidence_s.c_str());
+        }else if(tmp == "raw_bytes"){
+            getline(linestream, raw_bytes_s, ':');
+            data_bytes = atoi(raw_bytes_s.c_str());
+        }else if(tmp == "unit_is_mm"){
+            getline(linestream, unit_is_mm_s, ':');
+            unit_is_mm = atoi(unit_is_mm_s.c_str());
+        }else if(tmp == "with_chk"){
+            getline(linestream, with_chk_s, ':');
+            with_chk = atoi(with_chk_s.c_str());
+        }else if(tmp == "with_smooth"){
+            getline(linestream, with_smooth_s, ':');
+            with_smooth = atoi(with_smooth_s.c_str());
+        }else if(tmp == "with_deshadow"){
+            getline(linestream, with_deshadow_s, ':');
+            with_deshadow = atoi(with_deshadow_s.c_str());
+        }else if(tmp == "resample"){
+            getline(linestream, resample_s, ':');
+            resample = atoi(resample_s.c_str());
+        }else if(tmp == "rpm"){
+            getline(linestream, rpm_s, ':');
+            rpm = atoi(rpm_s.c_str());
+        }else if(tmp == "output_scan"){
+            getline(linestream, output_scan_s, ':');
+            output_scan = atoi(output_scan_s.c_str());
+        }else if(tmp == "output_360"){
+            getline(linestream, output_360_s, ':');
+            output_360 = atoi(output_360_s.c_str());
+        }else if(tmp == "from_zero"){
+            getline(linestream, from_zero_s, ':');
+            from_zero = atoi(from_zero_s.c_str());
+        }else if(tmp == "output_file"){
+            getline(linestream, output_file, ':');
+        }
+    }
+
+	/*
+	 * 2, open uart port
+	 */
+	int fd_uart = open_serial_port(port.c_str(), baud_rate);
 	if (fd_uart < 0) {
-		printf("Open port error ");
+		printf("\033[1;31m----> Open port error \033[0m\n");
 		return -1;
 	}
 	g_port = fd_uart;
+	
+	/*
+	 * 3, send cmd to lidar to set params
+	 */
+	setup_lidar(fd_uart, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth, rpm);
+    printf("\033[1;32m----> All params set OK ! Start parser data.\033[0m\n");
 
-	// 
-	setup_lidar(fd_uart, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
-
+    /*
+     * 4, read and parser data
+     */
 	unsigned char* buf = new unsigned char[BUF_SIZE];
 	int buf_len = 0;
 
 	FILE* fp_rec = NULL;// fopen("/tmp/rec.dat", "ab");
 
-	int fan_span = 360;
+	int fan_span = 360;//36 degrees
 	while (1)
-	{ 
+	{
+		/*
+	     * check fd_uart is ok
+	     */
 		fd_set fds;
 		FD_ZERO(&fds); 
 
@@ -304,6 +375,7 @@ int main(int argc, char **argv)
 			return -1;
 		}
 
+		//read data process
 		int new_data = -1;
 		if (fd_uart > 0 && FD_ISSET(fd_uart, &fds)) 
 		{
@@ -319,14 +391,17 @@ int main(int argc, char **argv)
 				fflush(fp_rec);
 		       	}
 
-			new_data = nr;
+			new_data = nr;//recevied data length
 		}
 
+		/*
+		 * do parser process
+		 */
 		if (new_data > 0)
 		{
 			buf_len += new_data;
 
-			int consume = 0; 
+			int consume = 0; //in order to compute the rest of data after every parser process
 			RawData dat;
 			bool is_pack;
 			//if (unit_is_mm)// && with_confidence)
@@ -341,13 +416,21 @@ int main(int argc, char **argv)
 					fan_span, unit_is_mm, with_confidence, 
 					dat, consume, with_chk);
 			}
+			//data output
 			if (is_pack)
 			{
-				data_process(dat);
+				if(output_scan){
+					if(output_360){
+						fan_data_process(dat, output_file);
+					}else{
+						whole_data_process(dat,from_zero,output_file);
+					}
+				}
 			}
 
 			if (consume > 0) 
 			{
+				//data is not whole fan,drop it
 				if (!is_pack) {
 #if 0
 					FILE* fp = fopen("/tmp/bad.dat", "ab");

@@ -2,14 +2,14 @@
 #define  _LIDAR_DATA
 
 #include <stdint.h>
-
+#include <string>
 #define PI 3.1415926535898
 
 #define HDR_SIZE 6
 #define HDR2_SIZE 8
 #define HDR3_SIZE 16 
 #define HDR7_SIZE 28 
-
+#define HDR99_SIZE 32 
 #define MAX_POINTS 500
 
 #define BUF_SIZE 8*1024
@@ -56,6 +56,7 @@ struct RawDataHdr7 {
 	uint32_t dev_id;
 };
 
+
 struct FanSegment
 {
 	RawDataHdr7 hdr;
@@ -67,6 +68,16 @@ struct FanSegment
 	struct FanSegment* next;
 };
 
+struct RawDataHdr99 {
+	uint16_t code;
+	uint16_t N;
+	uint16_t from;
+	uint16_t total;
+	uint32_t flags;
+	uint32_t timestamp;
+	uint32_t dev_no;
+	uint32_t reserved[3];
+};
 
 struct DataPoint
 {
@@ -111,5 +122,6 @@ bool parse_data_x(int len, unsigned char* buf,
 // 用户的数据处理
 
 void data_process(const RawData& raw);
-
+void fan_data_process(const RawData& raw, std::string output_file);
+void whole_data_process(const RawData& raw, bool from_zero, std::string output_file);
 #endif

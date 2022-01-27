@@ -299,7 +299,6 @@ bool GetData0x9D(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawD
 }
 
 
-
 bool GetData0xCF(const RawDataHdr2& hdr, unsigned char* pdat, int with_chk, RawData& dat)
 {
 	unsigned short sum = hdr.angle + hdr.N + hdr.span, chk;
@@ -375,6 +374,34 @@ bool GetData0xDF(const RawDataHdr3& hdr, unsigned char* pdat, int with_chk, RawD
 
 }
 
+bool GetData0x99(const RawDataHdr99& hdr, unsigned char* pdat, int with_chk, RawData& dat)
+{
+	dat.code = hdr.code;
+	dat.N = hdr.N;
+	dat.angle = hdr.from * 3600 / hdr.total; // 0.1 degree
+	dat.span =  hdr.N * 3600 / hdr.total; // 0.1 degree
+	//dat.fbase = ;
+	//dat.first;
+	//dat.last;
+	//dat.fend;
+	DecTimestamp(hdr.timestamp, dat.ts);
+
+	pdat += HDR99_SIZE;
+
+	uint8_t* dist = pdat;
+	uint8_t* energy = pdat + 2 * hdr.N;
+
+	for (int i = 0; i < hdr.N; i++) 
+	{
+		uint16_t lo = *dist++;
+		uint16_t hi = *dist++;
+		dat.points[i].distance = ((hi << 8) | lo) / 1000.0;
+		dat.points[i].angle = ((i + hdr.from) * 360.0 / hdr.total)*PI / 180;
+		dat.points[i].confidence = energy[i];
+	}
+	return true;
+}
+
 int pack_format = 0xce;
 
 char g_uuid[32] = "";
@@ -397,7 +424,7 @@ bool parse_data_x(int len, unsigned char* buf,
 			idx += 8;
 		}
 
-		if (buf[idx + 1] == 0xfa && (buf[idx] == 0xdf || buf[idx] == 0xce || buf[idx] == 0xcf || buf[idx] == 0xc7 || buf[idx] == 0x9d))
+		if (buf[idx + 1] == 0xfa && (buf[idx] == 0xdf || buf[idx] == 0xce || buf[idx] == 0xcf || buf[idx] == 0xc7 || buf[idx] == 0x9d || buf[idx] == 0x99))
 		{
 			// found;
 			pack_format = buf[idx];
@@ -421,12 +448,21 @@ bool parse_data_x(int len, unsigned char* buf,
 
 		RawDataHdr hdr;
 		memcpy(&hdr, buf+idx, HDR_SIZE);
-
-		if (buf[idx] != 0xc7 && (hdr.angle % 90) != 0) 
-		{
-			printf("bad angle %d\n", hdr.angle);
-			idx += 2;
-			continue; 
+		if(buf[idx] == 0x99){
+			RawDataHdr99 hdr99;
+			memcpy(&hdr99, buf+idx, HDR99_SIZE);
+			int hdr99_span = hdr99.N * 3600 / hdr99.total;
+			if(hdr99_span % 90 != 0){
+				printf("bad angle %d \n", hdr99_span);
+				idx += 2;
+				continue;
+			}
+		}else if(buf[idx] != 0xc7){
+			if(hdr.angle % 90 != 0){
+				printf("bad angle %d \n", hdr.angle);
+				idx += 2;
+				continue; 
+			}
 		}
 
 		if (hdr.N > MAX_POINTS || hdr.N < 10) 
@@ -473,6 +509,15 @@ bool parse_data_x(int len, unsigned char* buf,
 			got = GetData0xC7(hdr7, buf + idx, with_chk, dat);
 
 			consume = idx + HDR7_SIZE + 5 * hdr.N + 2;
+		} 		
+		else if (buf[idx] == 0x99 && idx + HDR99_SIZE + hdr.N * 3 + 2 <= len)
+		{
+			RawDataHdr99 hdr99;
+			memcpy(&hdr99, buf + idx, HDR99_SIZE);
+			
+			got = GetData0x99(hdr99, buf + idx, with_chk, dat);
+
+			consume = idx + HDR99_SIZE + 3 * hdr.N + 2;
 		} 
 		
 		else {

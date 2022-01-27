@@ -28,6 +28,9 @@
 #include <sys/socket.h>
 #include <math.h>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <sstream>
 #include "data.h"
 
 struct CmdHeader
@@ -122,7 +125,7 @@ bool send_cmd_udp(int fd_udp, const char* dev_ip, int dev_port,
 	return send_cmd_udp_f(fd_udp, dev_ip, dev_port, cmd, sn, len, snd_buf, true);
 }
 
-char lidar_ip[256];
+std::string lidar_ip;
 int lidar_port = 5000;
 
 bool udp_talk(int fd_udp, 
@@ -130,12 +133,13 @@ bool udp_talk(int fd_udp,
 		 int nhdr, const char* hdr_str, 
 		 int nfetch, char* fetch)
 {
+
 	printf("send command : \'%s\' \n", cmd);
-
+	
 	unsigned short sn = rand();
-	int rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, sn, n, cmd);
-
-	int nr = 0;
+	int rt = send_cmd_udp(fd_udp, lidar_ip.c_str(), lidar_port, 0x0043, sn, n, cmd);
+	
+	int ntry = 0;
 	for (int i=0; i<100; i++)
 	{
 		fd_set fds;
@@ -147,13 +151,14 @@ bool udp_talk(int fd_udp,
 		int ret = select(fd_udp+1, &fds, NULL, NULL, &to); 
 
 		if (ret <= 0) {
+			//printf("ret is: %d\n", ret);
 			return false;
 		}
 		
 		// read UDP data
 		if (FD_ISSET(fd_udp, &fds)) 
 		{ 
-			nr++;
+			ntry++;
 			sockaddr_in addr;
 			socklen_t sz = sizeof(addr);
 	
@@ -164,7 +169,7 @@ bool udp_talk(int fd_udp,
 				CmdHeader* hdr = (CmdHeader*)buf;
 				if (hdr->sign != 0x484c || hdr->sn != sn) continue;
 					
-				for (int i=0; i<nr-nhdr-nfetch; i++) 
+/* 				for (int i=0; i<nr-nhdr-nfetch; i++) 
 				{
 					if (memcmp(buf+i, hdr_str, nhdr) == 0) 
 					{ 
@@ -172,16 +177,26 @@ bool udp_talk(int fd_udp,
 					       	fetch[nfetch] = 0;
 					       	return true;
 				       	}
+			       	} */
+				for (int i=0; i<nr-nhdr-1; i++) 
+				{
+					if (memcmp(buf+i, hdr_str, nhdr) == 0) 
+					{ 
+						//memcpy(fetch, buf+i+nhdr, nfetch);
+						//fetch[nfetch] = 0;
+						memset(fetch, 0, nfetch);
+						for (int j=0; j<nfetch && i+nhdr+j<nr; j++)
+							fetch[j] = buf[i+nhdr+j];			
+					       	return true;
+				       	}
 			       	}
-
 				memcpy(fetch, "ok", 2);
 				fetch[2] = 0;
 				return true;
 			}
 		}
 	}
-
-	printf("read %d packets, not response\n", nr);
+	printf("read %d packets, not response\n", ntry);
 	return false;
 }
 
@@ -189,6 +204,7 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 {
 	//char buf[] = "LUUIDH";
 	//write(g_port, buf, strlen(buf));
+	
 	char buf[32];
 	int nr = 0;
 	
@@ -242,22 +258,69 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 
 int main(int argc, char **argv)
 {
-	int with_chk = 1; 		// 使能数据校验
+	/*
+     * 1,params init
+     */
+	if (argc < 2) {
+        printf("usage : ./lidar ../params/xxx.txt\n");
+        return -1;
+    }
+    std::string file_name = argv[1];
+    std::ifstream infile;
+    infile.open(file_name.c_str());
+    std::string s;
+    std::string lidar_port_s,local_port_s,unit_is_mm_s,with_confidence_s,resample_s,with_deshadow_s,with_smooth_s,with_chk_s,raw_bytes_s,rpm_s,output_scan_s,output_360_s,from_zero_s,output_file;
+    int local_port,unit_is_mm,with_confidence,resample,with_deshadow,with_smooth,with_chk,data_bytes,rpm,output_scan,output_360,from_zero;
+    while (getline(infile, s)){
+        std::string tmp;
+        std::stringstream linestream(s);
+        getline(linestream, tmp, ':');
 
-	if (argc < 9) {
-		printf("usage : ./udp_lidar_demo 雷达地址 雷达端口 本地端口 单位是毫米 数据中带有强度 去拖点 平滑 重采样\n");
-		return -1;
-	}
-	
-	strcpy(lidar_ip, argv[1]); // 雷达的网络地址
-	lidar_port = atoi(argv[2]); 			// 雷达的端口
-	int local_port = atoi(argv[3]); 			// 雷达的端口
-	int unit_is_mm = atoi(argv[4]); 	// 数据是毫米为单位,厘米时为0
-	int with_confidence = atoi(argv[5]); 	// 数据中带有强度
-	int with_deshadow = atoi(argv[6]); // 去拖点，0：关闭，1：开启
-	int with_smooth = atoi(argv[7]); // 数据平滑， 0：关闭， 1：开启
-	int resample = atoi(argv[8]); // 分辨率，0：原始数据，1：角度修正数据，200：0.2°，333：0.3°。。。。
-	
+        if(tmp == "lidar_ip"){
+            getline(linestream, lidar_ip, ':');
+        }else if(tmp == "lidar_port"){
+            getline(linestream, lidar_port_s, ':');
+            lidar_port = atoi(lidar_port_s.c_str());
+        }else if(tmp == "local_port"){
+            getline(linestream, local_port_s, ':');
+            local_port = atoi(local_port_s.c_str());
+        }else if(tmp == "with_confidence"){
+            getline(linestream, with_confidence_s, ':');
+            with_confidence = atoi(with_confidence_s.c_str());
+        }else if(tmp == "raw_bytes"){
+            getline(linestream, raw_bytes_s, ':');
+            data_bytes = atoi(raw_bytes_s.c_str());
+        }else if(tmp == "unit_is_mm"){
+            getline(linestream, unit_is_mm_s, ':');
+            unit_is_mm = atoi(unit_is_mm_s.c_str());
+        }else if(tmp == "with_chk"){
+            getline(linestream, with_chk_s, ':');
+            with_chk = atoi(with_chk_s.c_str());
+        }else if(tmp == "with_smooth"){
+            getline(linestream, with_smooth_s, ':');
+            with_smooth = atoi(with_smooth_s.c_str());
+        }else if(tmp == "with_deshadow"){
+            getline(linestream, with_deshadow_s, ':');
+            with_deshadow = atoi(with_deshadow_s.c_str());
+        }else if(tmp == "resample"){
+            getline(linestream, resample_s, ':');
+            resample = atoi(resample_s.c_str());
+        }else if(tmp == "rpm"){
+            getline(linestream, rpm_s, ':');
+            rpm = atoi(rpm_s.c_str());
+        }else if(tmp == "output_scan"){
+            getline(linestream, output_scan_s, ':');
+            output_scan = atoi(output_scan_s.c_str());
+        }else if(tmp == "output_360"){
+            getline(linestream, output_360_s, ':');
+            output_360 = atoi(output_360_s.c_str());
+        }else if(tmp == "from_zero"){
+            getline(linestream, from_zero_s, ':');
+            from_zero = atoi(from_zero_s.c_str());
+        }else if(tmp == "output_file"){
+            getline(linestream, output_file, ':');
+        }
+    }
 	// open UDP port
 	int fd_udp  = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	sockaddr_in addr;
@@ -268,23 +331,22 @@ int main(int argc, char **argv)
 	int rt = ::bind(fd_udp, (struct sockaddr *)&addr, sizeof(addr));
 	if (rt != 0)
 	{
-		printf("bind port %d failed\n", local_port);
+		printf("\033[1;31m----> bind port %d failed.\033[0m\n", local_port);
 		return -1;
 	}
 	
-	printf("start udp %s:%d udp %d\n", lidar_ip, lidar_port, fd_udp);
+	printf("\033[1;32m----> start udp %s:%d udp %d\033[0m\n", lidar_ip.c_str(), lidar_port, fd_udp);
 
-	char cmd[12] = "LGCPSH";
-	rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, rand(), 6, cmd);
+	char cmd[12] = "LUUIDH";
+	rt = send_cmd_udp(fd_udp, lidar_ip.c_str(), lidar_port, 0x0043, rand(), 6, cmd);
 
 	int fd_cmd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setup_lidar(fd_cmd, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
+	setup_lidar(fd_udp, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
 
 	unsigned char* buf = new unsigned char[BUF_SIZE];
 	int buf_len = 0;
 
 	FILE* fp_rec = NULL;// fopen("/tmp/rec.dat", "ab");
-
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -315,14 +377,14 @@ int main(int argc, char **argv)
 
 			// acknowlege device 
 			//int rt = send_cmd_udp(fd_udp, info->lidar_ip, info->lidar_port, 0x4753, rand(), 0, NULL);
-			send_cmd_udp_f(fd_cmd, lidar_ip, lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
+			send_cmd_udp_f(fd_cmd, lidar_ip.c_str(), lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
 
 			tto = tv.tv_sec + 1;
 		}
 
 		if (ret == 0) 
 		{
-			rt = send_cmd_udp(fd_cmd, lidar_ip, lidar_port, 0x0043, rand(), 6, cmd);
+			rt = send_cmd_udp(fd_cmd, lidar_ip.c_str(), lidar_port, 0x0043, rand(), 6, cmd);
 			continue;
 		}
 		
@@ -367,7 +429,13 @@ int main(int argc, char **argv)
 				}
 				if (is_pack)
 				{
-					data_process(dat);
+					if(output_scan){
+						if(output_360){
+							fan_data_process(dat, output_file);
+						}else{
+							whole_data_process(dat,from_zero,output_file);
+						}
+					}
 				}
 			}
 		}

@@ -1,0 +1,14 @@
+port:/dev/ttyUSB0
+baud_rate:500000
+raw_bytes:3
+unit_is_mm:1
+with_confidence:1
+with_checksum:1
+with_smooth:1
+with_deshadow:1
+resample:200
+rpm:600
+output_scan:1
+output_360:0
+from_zero:1
+output_file:/tmp/uart_data.txt
