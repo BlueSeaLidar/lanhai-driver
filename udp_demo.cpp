@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <pthread.h>
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <unistd.h> 
@@ -40,6 +39,7 @@ struct CmdHeader
 	unsigned short sn;
 	unsigned short len;
 };
+
 struct KeepAlive {
 	uint32_t world_clock;
 	uint32_t mcu_hz;
@@ -47,6 +47,101 @@ struct KeepAlive {
 	uint32_t delay;
 	uint32_t reserved[4];
 };
+
+struct RunConfig 
+{
+	// paramters
+    int local_port;
+	int unit_is_mm;
+	int with_confidence;
+	int resample;
+	int with_deshadow;
+	int with_smooth;
+	int with_chk;
+	int data_bytes;
+	int rpm;
+	int output_scan;
+	int output_360;
+	int from_zero;
+	char output_file[256];
+	char lidar_ip[256];
+	int lidar_port;
+
+	// control
+	bool should_quit;
+	pthread_t thread;
+};
+
+bool read_config(const char* cfg_file_name, RunConfig& cfg)
+{
+    std::ifstream infile;
+    infile.open(cfg_file_name);
+    std::string s;
+    std::string lidar_ip_s, lidar_port_s,local_port_s;
+    std::string unit_is_mm_s, with_confidence_s,resample_s;
+    std::string with_deshadow_s,with_smooth_s,with_chk_s;
+    std::string raw_bytes_s,rpm_s,output_scan_s,output_360_s;
+    std::string from_zero_s;
+    std::string output_file;
+
+    while (getline(infile, s))
+	{
+        std::string tmp;
+        std::stringstream linestream(s);
+        getline(linestream, tmp, ':');
+
+        if(tmp == "lidar_ip"){
+            getline(linestream, lidar_ip_s, ':');
+			strcpy(cfg.lidar_ip, lidar_ip_s.c_str());
+        }else if(tmp == "lidar_port"){
+            getline(linestream, lidar_port_s, ':');
+			cfg.lidar_port = atoi(lidar_port_s.c_str());
+        }else if(tmp == "local_port"){
+            getline(linestream, local_port_s, ':');
+            cfg.local_port = atoi(local_port_s.c_str());
+        }else if(tmp == "with_confidence"){
+            getline(linestream, with_confidence_s, ':');
+            cfg.with_confidence = atoi(with_confidence_s.c_str());
+        }else if(tmp == "raw_bytes"){
+            getline(linestream, raw_bytes_s, ':');
+            cfg.data_bytes = atoi(raw_bytes_s.c_str());
+        }else if(tmp == "unit_is_mm"){
+            getline(linestream, unit_is_mm_s, ':');
+            cfg.unit_is_mm = atoi(unit_is_mm_s.c_str());
+        }else if(tmp == "with_chk"){
+            getline(linestream, with_chk_s, ':');
+            cfg.with_chk = atoi(with_chk_s.c_str());
+        }else if(tmp == "with_smooth"){
+            getline(linestream, with_smooth_s, ':');
+            cfg.with_smooth = atoi(with_smooth_s.c_str());
+        }else if(tmp == "with_deshadow"){
+            getline(linestream, with_deshadow_s, ':');
+            cfg.with_deshadow = atoi(with_deshadow_s.c_str());
+        }else if(tmp == "resample"){
+            getline(linestream, resample_s, ':');
+            cfg.resample = atoi(resample_s.c_str());
+        }else if(tmp == "rpm"){
+            getline(linestream, rpm_s, ':');
+            cfg.rpm = atoi(rpm_s.c_str());
+        }else if(tmp == "output_scan"){
+            getline(linestream, output_scan_s, ':');
+            cfg.output_scan = atoi(output_scan_s.c_str());
+        }else if(tmp == "output_360"){
+            getline(linestream, output_360_s, ':');
+            cfg.output_360 = atoi(output_360_s.c_str());
+        }else if(tmp == "from_zero"){
+            getline(linestream, from_zero_s, ':');
+            cfg.from_zero = atoi(from_zero_s.c_str());
+        }else if(tmp == "output_file"){
+            getline(linestream, output_file, ':');
+			strcpy(cfg.output_file, output_file.c_str());
+        }
+    }
+	return true;
+}
+
+
+
 // CRC32
 unsigned int stm32crc(unsigned int *ptr, unsigned int len)
 {
@@ -125,10 +220,8 @@ bool send_cmd_udp(int fd_udp, const char* dev_ip, int dev_port,
 	return send_cmd_udp_f(fd_udp, dev_ip, dev_port, cmd, sn, len, snd_buf, true);
 }
 
-std::string lidar_ip;
-int lidar_port = 5000;
 
-bool udp_talk(int fd_udp, 
+bool udp_talk(int fd_udp, const char* lidar_ip, int lidar_port,
 		 int n, const char* cmd, 
 		 int nhdr, const char* hdr_str, 
 		 int nfetch, char* fetch)
@@ -137,7 +230,7 @@ bool udp_talk(int fd_udp,
 	printf("send command : \'%s\' \n", cmd);
 	
 	unsigned short sn = rand();
-	int rt = send_cmd_udp(fd_udp, lidar_ip.c_str(), lidar_port, 0x0043, sn, n, cmd);
+	int rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, sn, n, cmd);
 	
 	int ntry = 0;
 	for (int i=0; i<100; i++)
@@ -200,7 +293,8 @@ bool udp_talk(int fd_udp,
 	return false;
 }
 
-int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, int with_deshadow, int with_smooth)
+int setup_lidar(int fd_udp, const char* ip, int port,
+	int unit_is_mm, int with_confidence, int resample, int with_deshadow, int with_smooth)
 {
 	//char buf[] = "LUUIDH";
 	//write(g_port, buf, strlen(buf));
@@ -208,30 +302,30 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 	char buf[32];
 	int nr = 0;
 	
-	if (udp_talk(fd_udp, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
+	if (udp_talk(fd_udp, ip, port, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
 	{
 			printf("get product SN : %s\n", g_uuid);
 	}
 
-	if (udp_talk(fd_udp, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
+	if (udp_talk(fd_udp, ip, port, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
 				10, "SET LiDAR ", 9, buf) == 0)
 	{
 		printf("set LiDAR unit to %s\n", buf);
 	}
 
-	if (udp_talk(fd_udp, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
+	if (udp_talk(fd_udp, ip, port, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set LiDAR confidence to %s\n", buf);
 	}
 
-	if (udp_talk(fd_udp, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
+	if (udp_talk(fd_udp, ip, port, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set deshadow to %d\n", with_deshadow);
 	}
 
-	if (udp_talk(fd_udp, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
+	if (udp_talk(fd_udp, ip, port, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set smooth to %d\n", with_smooth);
@@ -248,7 +342,7 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 
 	if (buf[0]) {
 		char buf2[32];
-		if (udp_talk(fd_udp, 10, buf, 15, "set resolution ", 1, buf2) == 0)
+		if (udp_talk(fd_udp, ip, port, 10, buf, 15, "set resolution ", 1, buf2) == 0)
 		{
 			printf("set LiDAR resample to %d\n", resample);
 		}
@@ -256,97 +350,36 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 	return 0;
 }
 
-int main(int argc, char **argv)
+void* lidar_thread_proc(void* param)
 {
-	/*
-     * 1,params init
-     */
-	if (argc < 2) {
-        printf("usage : ./lidar ../params/xxx.txt\n");
-        return -1;
-    }
-    std::string file_name = argv[1];
-    std::ifstream infile;
-    infile.open(file_name.c_str());
-    std::string s;
-    std::string lidar_port_s,local_port_s,unit_is_mm_s,with_confidence_s,resample_s,with_deshadow_s,with_smooth_s,with_chk_s,raw_bytes_s,rpm_s,output_scan_s,output_360_s,from_zero_s,output_file;
-    int local_port,unit_is_mm,with_confidence,resample,with_deshadow,with_smooth,with_chk,data_bytes,rpm,output_scan,output_360,from_zero;
-    while (getline(infile, s)){
-        std::string tmp;
-        std::stringstream linestream(s);
-        getline(linestream, tmp, ':');
+	RunConfig* cfg = (RunConfig*)param;
 
-        if(tmp == "lidar_ip"){
-            getline(linestream, lidar_ip, ':');
-        }else if(tmp == "lidar_port"){
-            getline(linestream, lidar_port_s, ':');
-            lidar_port = atoi(lidar_port_s.c_str());
-        }else if(tmp == "local_port"){
-            getline(linestream, local_port_s, ':');
-            local_port = atoi(local_port_s.c_str());
-        }else if(tmp == "with_confidence"){
-            getline(linestream, with_confidence_s, ':');
-            with_confidence = atoi(with_confidence_s.c_str());
-        }else if(tmp == "raw_bytes"){
-            getline(linestream, raw_bytes_s, ':');
-            data_bytes = atoi(raw_bytes_s.c_str());
-        }else if(tmp == "unit_is_mm"){
-            getline(linestream, unit_is_mm_s, ':');
-            unit_is_mm = atoi(unit_is_mm_s.c_str());
-        }else if(tmp == "with_chk"){
-            getline(linestream, with_chk_s, ':');
-            with_chk = atoi(with_chk_s.c_str());
-        }else if(tmp == "with_smooth"){
-            getline(linestream, with_smooth_s, ':');
-            with_smooth = atoi(with_smooth_s.c_str());
-        }else if(tmp == "with_deshadow"){
-            getline(linestream, with_deshadow_s, ':');
-            with_deshadow = atoi(with_deshadow_s.c_str());
-        }else if(tmp == "resample"){
-            getline(linestream, resample_s, ':');
-            resample = atoi(resample_s.c_str());
-        }else if(tmp == "rpm"){
-            getline(linestream, rpm_s, ':');
-            rpm = atoi(rpm_s.c_str());
-        }else if(tmp == "output_scan"){
-            getline(linestream, output_scan_s, ':');
-            output_scan = atoi(output_scan_s.c_str());
-        }else if(tmp == "output_360"){
-            getline(linestream, output_360_s, ':');
-            output_360 = atoi(output_360_s.c_str());
-        }else if(tmp == "from_zero"){
-            getline(linestream, from_zero_s, ':');
-            from_zero = atoi(from_zero_s.c_str());
-        }else if(tmp == "output_file"){
-            getline(linestream, output_file, ':');
-        }
-    }
 	// open UDP port
-	int fd_udp  = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int fd_udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(local_port);
+	addr.sin_port = htons(cfg->local_port);
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	int rt = ::bind(fd_udp, (struct sockaddr *)&addr, sizeof(addr));
 	if (rt != 0)
 	{
-		printf("\033[1;31m----> bind port %d failed.\033[0m\n", local_port);
-		return -1;
+		printf("\033[1;31m----> bind port %d failed.\033[0m\n", cfg->local_port);
+		return NULL;
 	}
 	
-	printf("\033[1;32m----> start udp %s:%d udp %d\033[0m\n", lidar_ip.c_str(), lidar_port, fd_udp);
+	printf("\033[1;32m----> start udp %s:%d udp %d\033[0m\n", cfg->lidar_ip, cfg->lidar_port, fd_udp);
 
 	char cmd[12] = "LUUIDH";
-	rt = send_cmd_udp(fd_udp, lidar_ip.c_str(), lidar_port, 0x0043, rand(), 6, cmd);
+	rt = send_cmd_udp(fd_udp, cfg->lidar_ip, cfg->lidar_port, 0x0043, rand(), 6, cmd);
 
 	int fd_cmd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setup_lidar(fd_udp, unit_is_mm, with_confidence, resample, with_deshadow, with_smooth);
+	setup_lidar(fd_udp, cfg->lidar_ip, cfg->lidar_port,
+		cfg->unit_is_mm, cfg->with_confidence, 
+		cfg->resample, cfg->with_deshadow, cfg->with_smooth);
 
 	unsigned char* buf = new unsigned char[BUF_SIZE];
 	int buf_len = 0;
-
-	FILE* fp_rec = NULL;// fopen("/tmp/rec.dat", "ab");
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -355,8 +388,9 @@ int main(int argc, char **argv)
 
 	bool should_publish = false;
 	int fan_span = 360;
+	int idle = 0;
 
-	while (1)
+	while (!cfg->should_quit)
 	{ 
 		fd_set fds;
 		FD_ZERO(&fds); 
@@ -364,7 +398,7 @@ int main(int argc, char **argv)
 		FD_SET(fd_cmd, &fds); 
 		int fd_max = fd_udp > fd_cmd ? fd_udp : fd_cmd;
 		
-		struct timeval to = { 10, 1 };
+		struct timeval to = { 1, 1 };
 		int ret = select(fd_max+1, &fds, NULL, NULL, &to); 
 
 		gettimeofday(&tv, NULL);
@@ -377,22 +411,25 @@ int main(int argc, char **argv)
 
 			// acknowlege device 
 			//int rt = send_cmd_udp(fd_udp, info->lidar_ip, info->lidar_port, 0x4753, rand(), 0, NULL);
-			send_cmd_udp_f(fd_cmd, lidar_ip.c_str(), lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
+			send_cmd_udp_f(fd_cmd, cfg->lidar_ip, cfg->lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
 
 			tto = tv.tv_sec + 1;
 		}
 
 		if (ret == 0) 
 		{
-			rt = send_cmd_udp(fd_cmd, lidar_ip.c_str(), lidar_port, 0x0043, rand(), 6, cmd);
+			if (idle++ > 10) {
+				rt = send_cmd_udp(fd_cmd, cfg->lidar_ip, cfg->lidar_port, 0x0043, rand(), 6, cmd);
+				idle = 0;
+			}
 			continue;
 		}
 		
 		if (ret < 0) {
 			printf("select error\n");
-			return -1;
+			break;
 		}
-
+		idle = 0;
 		
 		// read UDP command response
 		if (FD_ISSET(fd_cmd, &fds)) 
@@ -416,29 +453,77 @@ int main(int argc, char **argv)
 				RawData dat;
 				bool is_pack;
 				int consume;
-				if (unit_is_mm && with_confidence)
+				if (cfg->unit_is_mm && cfg->with_confidence)
 				{
 					is_pack = parse_data_x(len, buf, 
-						fan_span,unit_is_mm, with_confidence,
-						dat, consume, with_chk);
+						fan_span, cfg->unit_is_mm, cfg->with_confidence,
+						dat, consume, cfg->with_chk);
 				}
 				else {
 					is_pack = parse_data(len, buf, 
-						fan_span, unit_is_mm, with_confidence, 
-						dat, consume, with_chk);
+						fan_span, cfg->unit_is_mm, cfg->with_confidence, 
+						dat, consume, cfg->with_chk);
 				}
 				if (is_pack)
 				{
-					if(output_scan){
-						if(output_360){
-							fan_data_process(dat, output_file);
+					if(cfg->output_scan){
+						if(cfg->output_360){
+							fan_data_process(dat, cfg->output_file);
 						}else{
-							whole_data_process(dat,from_zero,output_file);
+							whole_data_process(dat, cfg->from_zero, cfg->output_file);
 						}
 					}
 				}
 			}
 		}
+	}
+
+	close(fd_udp);
+	close(fd_cmd);
+
+	delete buf;
+	return NULL;
+}
+
+RunConfig* StartDrv(const RunConfig& cfg)
+{
+	RunConfig* run = new RunConfig;
+	memcpy(run, &cfg, sizeof(RunConfig));
+
+	run->should_quit = false;
+	pthread_create(&run->thread, NULL, lidar_thread_proc, run);
+
+	return run;
+}
+
+void StopDrv(RunConfig* run)
+{
+	run->should_quit = true;
+	sleep(2);
+}
+
+int main(int argc, char **argv)
+{
+	/*
+     * 1,params init
+     */
+	if (argc < 2) {
+        printf("usage : ./lidar ../params/xxx.txt\n");
+        return -1;
+    }
+
+	const char* cfg_file_name = argv[1];
+
+	RunConfig cfg;
+	read_config(cfg_file_name, cfg);
+
+	while (1) {
+		RunConfig* round = StartDrv(cfg);
+
+		printf("press any key to restart driver\n");
+		int ch = getchar();
+
+		StopDrv(round);
 	}
 
 	return 0;
