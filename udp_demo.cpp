@@ -69,6 +69,7 @@ struct RunConfig
 
 	// control
 	bool should_quit;
+	bool should_run;
 	pthread_t thread;
 };
 
@@ -226,26 +227,30 @@ bool udp_talk(int fd_udp, const char* lidar_ip, int lidar_port,
 		 int nhdr, const char* hdr_str, 
 		 int nfetch, char* fetch)
 {
-
 	printf("send command : \'%s\' \n", cmd);
 	
 	unsigned short sn = rand();
 	int rt = send_cmd_udp(fd_udp, lidar_ip, lidar_port, 0x0043, sn, n, cmd);
 	
+	time_t t0 = time(NULL);
 	int ntry = 0;
-	for (int i=0; i<100; i++)
+	while (time(NULL) < t0+3 && ntry < 1000)
 	{
 		fd_set fds;
 		FD_ZERO(&fds); 
-
 		FD_SET(fd_udp, &fds); 
 	
 		struct timeval to = { 1, 0 }; 
 		int ret = select(fd_udp+1, &fds, NULL, NULL, &to); 
 
-		if (ret <= 0) {
-			//printf("ret is: %d\n", ret);
+
+		if (ret < 0) {
+			printf("select error\n");
 			return false;
+		}
+		if (ret == 0)
+		{
+			continue;
 		}
 		
 		// read UDP data
@@ -260,32 +265,28 @@ bool udp_talk(int fd_udp, const char* lidar_ip, int lidar_port,
 			if (nr > 0) 
 			{	
 				CmdHeader* hdr = (CmdHeader*)buf;
-				if (hdr->sign != 0x484c || hdr->sn != sn) continue;
+				if (hdr->sign != 0x484c || hdr->sn != sn) 
+					continue;
 					
-/* 				for (int i=0; i<nr-nhdr-nfetch; i++) 
-				{
-					if (memcmp(buf+i, hdr_str, nhdr) == 0) 
-					{ 
-						memcpy(fetch, buf+i+nhdr, nfetch);
-					       	fetch[nfetch] = 0;
-					       	return true;
-				       	}
-			       	} */
+				char* payload = buf+sizeof(CmdHeader);
 				for (int i=0; i<nr-nhdr-1; i++) 
 				{
-					if (memcmp(buf+i, hdr_str, nhdr) == 0) 
+					if (memcmp(payload+i, hdr_str, nhdr) == 0) 
 					{ 
 						//memcpy(fetch, buf+i+nhdr, nfetch);
 						//fetch[nfetch] = 0;
-						memset(fetch, 0, nfetch);
-						for (int j=0; j<nfetch && i+nhdr+j<nr; j++)
-							fetch[j] = buf[i+nhdr+j];			
-					       	return true;
-				       	}
-			       	}
-				memcpy(fetch, "ok", 2);
-				fetch[2] = 0;
-				return true;
+						if (nfetch > 0) 
+						{
+							memset(fetch, 0, nfetch);
+							for (int j=0; j<nfetch && i+nhdr+j<nr; j++)
+								fetch[j] = payload[i+nhdr+j];			
+						}
+						return true;
+					}
+				}
+				//memcpy(fetch, "ok", 2);
+				//fetch[2] = 0;
+				//return true;
 			}
 		}
 	}
@@ -302,33 +303,28 @@ int setup_lidar(int fd_udp, const char* ip, int port,
 	char buf[32];
 	int nr = 0;
 	
-	if (udp_talk(fd_udp, ip, port, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
+	if (udp_talk(fd_udp, ip, port, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid)) 
 	{
-			printf("get product SN : %s\n", g_uuid);
+		printf("get product SN : %s\n", g_uuid);
 	}
 
-	if (udp_talk(fd_udp, ip, port, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
-				10, "SET LiDAR ", 9, buf) == 0)
+	if (!udp_talk(fd_udp, ip, port, 6, "LSTARH", 2, "OK", 0, NULL)) 
 	{
-		printf("set LiDAR unit to %s\n", buf);
+		printf("start Lidar fail!\n");
 	}
 
-	if (udp_talk(fd_udp, ip, port, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
-				6, "LiDAR ", 5, buf) == 0)
+	if (!udp_talk(fd_udp, ip, port, 
+			6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
+			2, "OK", 0, NULL))
 	{
-		printf("set LiDAR confidence to %s\n", buf);
+		printf("set deshadow to %d fail!\n", with_deshadow);
 	}
 
-	if (udp_talk(fd_udp, ip, port, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
-				6, "LiDAR ", 5, buf) == 0)
+	if (!udp_talk(fd_udp, ip, port, 6,
+			with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
+			2, "OK", 0, NULL))
 	{
-		printf("set deshadow to %d\n", with_deshadow);
-	}
-
-	if (udp_talk(fd_udp, ip, port, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
-				6, "LiDAR ", 5, buf) == 0)
-	{
-		printf("set smooth to %d\n", with_smooth);
+		printf("set smooth to %d fail!\n", with_smooth);
 	}
 
 	if (resample == 0)
@@ -341,10 +337,9 @@ int setup_lidar(int fd_udp, const char* ip, int port,
 		buf[0] = 0;
 
 	if (buf[0]) {
-		char buf2[32];
-		if (udp_talk(fd_udp, ip, port, 10, buf, 15, "set resolution ", 1, buf2) == 0)
+		if (!udp_talk(fd_udp, ip, port, 10, buf, 0, "OK", 0, NULL) )
 		{
-			printf("set LiDAR resample to %d\n", resample);
+			printf("set LiDAR resample to %d fail!\n", resample);
 		}
 	}
 	return 0;
@@ -373,7 +368,6 @@ void* lidar_thread_proc(void* param)
 	char cmd[12] = "LUUIDH";
 	rt = send_cmd_udp(fd_udp, cfg->lidar_ip, cfg->lidar_port, 0x0043, rand(), 6, cmd);
 
-	int fd_cmd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	setup_lidar(fd_udp, cfg->lidar_ip, cfg->lidar_port,
 		cfg->unit_is_mm, cfg->with_confidence, 
 		cfg->resample, cfg->with_deshadow, cfg->with_smooth);
@@ -390,16 +384,29 @@ void* lidar_thread_proc(void* param)
 	int fan_span = 360;
 	int idle = 0;
 
+	bool runing = true;
 	while (!cfg->should_quit)
 	{ 
+		// 启停雷达测距
+		if (runing != cfg->should_run)
+		{
+			char str_start[] = "LSTARH";
+			char str_stop[] = "LSTOPH";
+
+			if (udp_talk(fd_udp, cfg->lidar_ip, cfg->lidar_port,
+				 6, cfg->should_run ? str_start: str_stop,
+				 2, "OK", 0, NULL) ) 
+			{
+				runing = cfg->should_run;
+			}
+		}
+
 		fd_set fds;
 		FD_ZERO(&fds); 
 		FD_SET(fd_udp, &fds); 
-		FD_SET(fd_cmd, &fds); 
-		int fd_max = fd_udp > fd_cmd ? fd_udp : fd_cmd;
 		
 		struct timeval to = { 1, 1 };
-		int ret = select(fd_max+1, &fds, NULL, NULL, &to); 
+		int ret = select(fd_udp+1, &fds, NULL, NULL, &to); 
 
 		gettimeofday(&tv, NULL);
 		if (tv.tv_sec > tto) 
@@ -411,15 +418,17 @@ void* lidar_thread_proc(void* param)
 
 			// acknowlege device 
 			//int rt = send_cmd_udp(fd_udp, info->lidar_ip, info->lidar_port, 0x4753, rand(), 0, NULL);
-			send_cmd_udp_f(fd_cmd, cfg->lidar_ip, cfg->lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
+			send_cmd_udp_f(fd_udp, cfg->lidar_ip, cfg->lidar_port, 0x4b41, rand(), sizeof(alive), &alive, false);
 
 			tto = tv.tv_sec + 1;
 		}
 
 		if (ret == 0) 
 		{
+			if (!runing) continue;
+
 			if (idle++ > 10) {
-				rt = send_cmd_udp(fd_cmd, cfg->lidar_ip, cfg->lidar_port, 0x0043, rand(), 6, cmd);
+				rt = send_cmd_udp(fd_udp, cfg->lidar_ip, cfg->lidar_port, 0x0043, rand(), 6, cmd);
 				idle = 0;
 			}
 			continue;
@@ -429,22 +438,11 @@ void* lidar_thread_proc(void* param)
 			printf("select error\n");
 			break;
 		}
-		idle = 0;
-		
-		// read UDP command response
-		if (FD_ISSET(fd_cmd, &fds)) 
-		{
-			sockaddr_in addr;
-			socklen_t sz = sizeof(addr);
-
-			int len = recvfrom(fd_cmd, buf, BUF_SIZE, 0, (struct sockaddr *)&addr, &sz);
-			if (len > 0) {
-			}
-		}
 		
 		// read UDP data
 		if (FD_ISSET(fd_udp, &fds)) 
 		{ 
+			idle = 0;
 			sockaddr_in addr;
 			socklen_t sz = sizeof(addr);
 
@@ -479,27 +477,35 @@ void* lidar_thread_proc(void* param)
 	}
 
 	close(fd_udp);
-	close(fd_cmd);
 
 	delete buf;
 	return NULL;
 }
 
+// 连接雷达，开始接收数据
 RunConfig* StartDrv(const RunConfig& cfg)
 {
 	RunConfig* run = new RunConfig;
 	memcpy(run, &cfg, sizeof(RunConfig));
 
 	run->should_quit = false;
+	run->should_run = true;
 	pthread_create(&run->thread, NULL, lidar_thread_proc, run);
 
 	return run;
 }
 
+// 释放连接
 void StopDrv(RunConfig* run)
 {
 	run->should_quit = true;
 	sleep(2);
+}
+
+// 启停雷达测距
+void ControlDrv(RunConfig* run, bool start_motor)
+{
+	run->should_run = start_motor;
 }
 
 int main(int argc, char **argv)
@@ -520,8 +526,31 @@ int main(int argc, char **argv)
 	while (1) {
 		RunConfig* round = StartDrv(cfg);
 
-		printf("press any key to restart driver\n");
-		int ch = getchar();
+		while (1) {
+			printf("\n=======================================\n");
+			printf("input 'start' to restart LiDAR\n");
+			printf("input 'stop' to stop LiDAR\n");
+			printf("input 'exit' to disconnect\n");
+			printf("=======================================\n");
+
+			char line[80];
+			fgets(line, 80, stdin);
+
+			if (strncmp(line, "start", 5) == 0)
+			{
+				ControlDrv(round, true);
+				continue;
+			}
+			else if (strncmp(line, "stop", 4) == 0)
+			{
+				ControlDrv(round, false);
+				continue;
+			}
+			else if (strncmp(line, "exit", 4) == 0)
+			{
+				break;
+			}
+		}
 
 		StopDrv(round);
 	}
