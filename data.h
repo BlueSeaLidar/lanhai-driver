@@ -122,6 +122,6 @@ bool parse_data_x(int len, unsigned char* buf,
 // 用户的数据处理
 
 void data_process(const RawData& raw);
-void fan_data_process(const RawData& raw, std::string output_file);
-void whole_data_process(const RawData& raw, bool from_zero, std::string output_file);
+void fan_data_process(const RawData& raw, const char* output_file);
+void whole_data_process(const RawData& raw, bool from_zero, const char* output_file);
 #endif
