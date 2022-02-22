@@ -421,9 +421,9 @@ int main(int argc, char **argv)
 			{
 				if(output_scan){
 					if(output_360){
-						fan_data_process(dat, output_file);
+						fan_data_process(dat, output_file.c_str());
 					}else{
-						whole_data_process(dat,from_zero,output_file);
+						whole_data_process(dat,from_zero,output_file.c_str());
 					}
 				}
 			}
