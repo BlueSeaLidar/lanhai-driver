@@ -99,7 +99,8 @@ void data_process(const RawData& raw)
 }
 
 
-void fan_data_process(const RawData& raw, std::string output_file){
+void fan_data_process(const RawData& raw, const char* output_file)
+{
 	RawData* data = new RawData;
 	memcpy(data, &raw, sizeof(RawData));
 	uint32_t timestamp[2] = {0};
@@ -108,20 +109,23 @@ void fan_data_process(const RawData& raw, std::string output_file){
 	
     //printf("%d.%d\t",timestamp[0],timestamp[1]);
 	//printf("single span data points %d\n", data->N);
-	FILE* fp = fopen(output_file.c_str(), "w");
-	if (fp) {
-		for (int i = 0; i < data->N; i++)
-		{
-			fprintf(fp, "%.5f\t%.3f\t%d\n", data->points[i].angle, data->points[i].distance, data->points[i].confidence);
+	if (output_file != NULL)
+	{
+		FILE* fp = fopen(output_file, "w");
+		if (fp) {
+			for (int i = 0; i < data->N; i++)
+			{
+				fprintf(fp, "%.5f\t%.3f\t%d\n", data->points[i].angle, data->points[i].distance, data->points[i].confidence);
+			}
+			fclose(fp);
 		}
-		fclose(fp);
 	}
-	
 	delete data;
 }
 
 vector<RawData*> whole_datas;
-void whole_data_process(const RawData& raw, bool from_zero, std::string output_file) {
+void whole_data_process(const RawData& raw, bool from_zero, const char* output_file) 
+{
     RawData *data = new RawData;
     memcpy(data, &raw, sizeof(RawData));
     whole_datas.push_back(data);
@@ -171,18 +175,20 @@ void whole_data_process(const RawData& raw, bool from_zero, std::string output_f
     }
     whole_datas.clear();
 
-  
-    //printf("timestamp: %d.%d\n", timestamp[0], timestamp[1]);
-    //printf("Data frame head: %x \n360 degrees contains %d spans\n", pack_format, n);
-    FILE *fp = fopen(output_file.c_str(), "w");
-    if (fp) {
-        for (int i = 0; i < count; i++) {
-            fprintf(fp, "%.5f\t%.3f\t%d\n",
-                        points[i].angle > factor * PI ? points[i].angle - 2 * PI : points[i].angle,
-                        points[i].distance, points[i].confidence);
-        }
-        fclose(fp);
-    }
+    printf("\r%d.%d : Data frame head = %x, 360 degrees contains %d spans", 
+		timestamp[0], timestamp[1], pack_format, n);
+	if (output_file != NULL)
+	{
+		FILE *fp = fopen(output_file, "w");
+		if (fp) {
+			for (int i = 0; i < count; i++) {
+				fprintf(fp, "%.5f\t%.3f\t%d\n",
+							points[i].angle > factor * PI ? points[i].angle - 2 * PI : points[i].angle,
+							points[i].distance, points[i].confidence);
+			}
+			fclose(fp);
+		}
+	}
 	delete[] points;
     
 }
