@@ -1,4 +1,4 @@
-lidar_ip:192.168.0.98
+lidar_ip:192.168.0.109
 lidar_port:6543
 local_port:6668
 raw_bytes:3
@@ -7,9 +7,11 @@ with_confidence:1
 with_checksum:1
 with_smooth:1
 with_deshadow:1
-resample:200
+resample:400
 rpm:600
 output_scan:1
-output_360:0
+output_360:1
 from_zero:0
 output_file:/tmp/udp_data.txt
+is_group_listener:1
+group_ip:224.0.0.99
