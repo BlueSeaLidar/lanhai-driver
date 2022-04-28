@@ -106,7 +106,8 @@ struct RawData
 
 extern int pack_format;
 extern char g_uuid[32];
-
+extern uint32_t g_timestamp[2];
+extern int  g_flag;
 // 固定格式解析
 
 bool parse_data(int len, unsigned char* buf, 
