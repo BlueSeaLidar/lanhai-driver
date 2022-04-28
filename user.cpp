@@ -11,7 +11,7 @@ using namespace std;
 //from_zero true时从[0，pi），false时[-pi,pi)
 bool from_zero = false;
 int factor = from_zero ? 2 : 1;
-
+uint32_t g_timestamp[2]={0};
 
 // 360 数据
 void data_process(int n, DataPoint* points, uint32_t* timestamp = NULL)
@@ -19,6 +19,12 @@ void data_process(int n, DataPoint* points, uint32_t* timestamp = NULL)
 	if (timestamp != NULL)
 		printf("%d.%d ", timestamp[0], timestamp[1]);
 	//printf("%x : 360 data points %d\n", pack_format, n);
+	for (int i = 0; i < n; i++)
+		{
+			printf("%.5f\t%.3f\t%d\n",
+				points[i].angle > factor*PI ? points[i].angle-2*PI : points[i].angle, 
+				points[i].distance, points[i].confidence);
+		}
 #if 0
 	FILE* fp = fopen("last.txt", "w");
 	if (fp) {
@@ -98,7 +104,8 @@ void data_process(const RawData& raw)
 	delete[] points;
 }
 
-
+int g_flag=0;
+int m_oldtime=0;
 void fan_data_process(const RawData& raw, const char* output_file)
 {
 	RawData* data = new RawData;
@@ -106,20 +113,40 @@ void fan_data_process(const RawData& raw, const char* output_file)
 	uint32_t timestamp[2] = {0};
 	timestamp[0] = data->ts[0];
 	timestamp[1] = data->ts[1];
-	
-    //printf("%d.%d\t",timestamp[0],timestamp[1]);
-	//printf("single span data points %d\n", data->N);
+	if(g_flag==1)
+	{
+		int temp = (timestamp[0] % 3600) * 1000 + timestamp[1] / 1000;
+		if(temp-m_oldtime>10000)
+		{
+		  //printf("after time:%d  error: \033[%d\033[0m\n",temp,temp-m_oldtime);
+		  printf("\033[0;31m after time:%d  error:%d\n",temp,temp-m_oldtime);
+		}
+   		else
+   		{
+   			printf("\033[0m after time:%d \n",temp);
+   		}
+   		m_oldtime=temp;
+   		g_flag=0;
+   	}
+    	// for (int i = 0; i < data->N; i++)
+		 //	{
+		 		//printf("%.5f\t%.3f\t%d\n", data->points[i].angle, data->points[i].distance, data->points[i].confidence);
+		 //	}
+	printf("single span data points %d  time:%d.%d\n",data->N,timestamp[0],timestamp[1]);
 	if (output_file != NULL)
 	{
 		FILE* fp = fopen(output_file, "w");
 		if (fp) {
-			for (int i = 0; i < data->N; i++)
-			{
-				fprintf(fp, "%.5f\t%.3f\t%d\n", data->points[i].angle, data->points[i].distance, data->points[i].confidence);
-			}
+			// for (int i = 0; i < data->N; i++)
+			// {
+			// 	fprintf(fp, "%.5f\t%.3f\t%d\n", data->points[i].angle, data->points[i].distance, data->points[i].confidence);
+			// }
+			int diff = timestamp[0]*1000+timestamp[1]-g_timestamp[0]*1000-g_timestamp[1];
+			fprintf(fp, "[diff]:%d [new0]:%d  [new1]:%d \n",diff,timestamp[0], timestamp[1]);
 			fclose(fp);
 		}
 	}
+	memcpy(g_timestamp,timestamp,sizeof(timestamp));
 	delete data;
 }
 
@@ -175,20 +202,25 @@ void whole_data_process(const RawData& raw, bool from_zero, const char* output_f
     }
     whole_datas.clear();
 
-    printf("\r%d.%d : Data frame head = %x, 360 degrees contains %d spans", 
-		timestamp[0], timestamp[1], pack_format, n);
+    //printf("\r%d.%d : Data frame head = %x, 360 degrees contains %d spans", timestamp[0], timestamp[1], pack_format, n);
+	printf("single span data points %d  time:%d.%d\n",count,timestamp[0],timestamp[1]);
+	//g_timestamp=timestamp;
+	
 	if (output_file != NULL)
 	{
 		FILE *fp = fopen(output_file, "w");
 		if (fp) {
-			for (int i = 0; i < count; i++) {
-				fprintf(fp, "%.5f\t%.3f\t%d\n",
-							points[i].angle > factor * PI ? points[i].angle - 2 * PI : points[i].angle,
-							points[i].distance, points[i].confidence);
-			}
+			// for (int i = 0; i < count; i++) {
+			// 	fprintf(fp, "%.5f\t%.3f\t%d\n",
+			// 				points[i].angle > factor * PI ? points[i].angle - 2 * PI : points[i].angle,
+			// 				points[i].distance, points[i].confidence);
+			// }
+			int diff = timestamp[0]*1000+timestamp[1]-g_timestamp[0]*1000-g_timestamp[1];
+			fprintf(fp, "[diff]:%d [new0]:%d  [new1]:%d \n",diff,timestamp[0], timestamp[1]);
 			fclose(fp);
 		}
 	}
+	memcpy(g_timestamp,timestamp,sizeof(timestamp));
 	delete[] points;
     
 }
