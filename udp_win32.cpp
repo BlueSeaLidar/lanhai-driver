@@ -170,42 +170,40 @@ int setup_lidar(int fd_udp, int unit_is_mm, int with_confidence, int resample, i
 	//write(g_port, buf, strlen(buf));
 	char buf[32];
 	int nr = 0;
-
+	//get product sn (Compatible with multiple models)
 	if (udp_talk(fd_udp, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid) == 0) 
 	{
 			printf("get product SN : %s\n", g_uuid);
 	}
-
+	//Set the lidar returned data unit   CM or MM
 	if (udp_talk(fd_udp, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
 				10, "SET LiDAR ", 9, buf) == 0)
 	{
 		printf("set LiDAR unit to %s\n", buf);
 	}
-
+	//set lidar confidence state   LNCONH close   LOCONH open
 	if (udp_talk(fd_udp, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set LiDAR confidence to %s\n", buf);
 	}
-
+	//set  de-deshadow state    LFFF0H:close  LFFF1H:open
 	if (udp_talk(fd_udp, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set deshadow to %d\n", with_deshadow);
 	}
-
+	//set  de-smooth     LSSS0H:close   LSSS1H:open
 	if (udp_talk(fd_udp, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set smooth to %d\n", with_smooth);
 	}
-
+	//LSRES:000H :set default Angular resolution  LSRES:001H :fix Angular resolution  
 	if (resample == 0)
 		strcpy_s(buf, 30, "LSRES:000H");
 	else if (resample == 1)
 		strcpy_s(buf, 30, "LSRES:001H");
-	else if (resample > 100 && resample < 1000)
-		sprintf_s(buf, 30, "LSRES:%03dH", resample);
 	else
 		buf[0] = 0;
 

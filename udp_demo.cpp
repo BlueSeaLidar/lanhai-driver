@@ -340,40 +340,39 @@ int setup_lidar(int fd_udp, const char *ip, int port,
 	// write(g_port, buf, strlen(buf));
 	char buf[32];
 	int nr = 0;
-
+	//get product sn
 	if (udp_talk(fd_udp, ip, port, 6, "LUUIDH", 12, "PRODUCT SN: ", 9, g_uuid))
 	{
 		printf("get product SN : %s\n", g_uuid);
 	}
-
+	//set lidar confidence  state LNCONH close   LOCONH open
 	if (udp_talk(fd_udp, ip, port, 6, "LOCONH", 2, "OK", 0, NULL))
 	{
 	}
-
+	//set lidar start
 	if (!udp_talk(fd_udp, ip, port, 6, "LSTARH", 2, "OK", 0, NULL))
 	{
 		printf("start Lidar fail!\n");
 	}
-
+	//set  de-deshadow state    LFFF0H:close  LFFF1H:open
 	if (!udp_talk(fd_udp, ip, port,
 				  6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H",
 				  2, "OK", 0, NULL))
 	{
 		printf("set deshadow to %d fail!\n", with_deshadow);
 	}
-
+	//set  de-smooth     LSSS0H:close   LSSS1H:open
 	if (!udp_talk(fd_udp, ip, port, 6,
 				  with_smooth == 0 ? "LSSS0H" : "LSSS1H",
 				  2, "OK", 0, NULL))
 	{
 		printf("set smooth to %d fail!\n", with_smooth);
 	}
+	//LSRES:000H :set default Angular resolution  LSRES:001H :fix Angular resolution  
 	if (resample == 0)
 		strcpy(buf, "LSRES:000H");
 	else if (resample == 1)
 		strcpy(buf, "LSRES:001H");
-	else if (resample > 100 && resample < 1000)
-		sprintf(buf, "LSRES:%03dH", resample);
 	else
 		buf[0] = 0;
 

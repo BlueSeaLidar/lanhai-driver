@@ -194,7 +194,7 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		printf("serial port seem not working\n");
 		return -1;
 	}
-
+	//get product sn (Compatible with multiple models)
 	if (uart_talk(fd_uart, 6, "LUUIDH", 11, "PRODUCT SN:", 16, buf) == 0) 
 	{
 		strip(buf, g_uuid);
@@ -205,37 +205,35 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		strip(buf, g_uuid);
 		printf("get product SN : %s\n", g_uuid);
 	}
-	
+	//Set the lidar returned data unit   CM or MM
 	if (uart_talk(fd_uart, 6, unit_is_mm == 0 ? "LMDCMH" : "LMDMMH", 
 				10, "SET LiDAR ", 9, buf) == 0)
 	{
 		printf("set LiDAR unit to %s\n", buf);
 	}
-
+	//set lidar confidence state   LNCONH close   LOCONH open
 	if (uart_talk(fd_uart, 6, with_confidence == 0 ? "LNCONH" : "LOCONH", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set LiDAR confidence to %s\n", buf);
 	}
-
+	//set  de-deshadow state    LFFF0H:close  LFFF1H:open
 	if (uart_talk(fd_uart, 6, with_deshadow == 0 ? "LFFF0H" : "LFFF1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set deshadow to %d\n", with_deshadow);
 	}
-
+	//set  de-smooth     LSSS0H:close   LSSS1H:open
 	if (uart_talk(fd_uart, 6, with_smooth == 0 ? "LSSS0H" : "LSSS1H", 
 				6, "LiDAR ", 5, buf) == 0)
 	{
 		printf("set smooth to %d\n", with_smooth);
 	}
-
+	//LSRES:000H :set default Angular resolution  LSRES:001H :fix Angular resolution  
 	if (resample == 0)
 		strcpy(buf, "LSRES:000H");
 	else if (resample == 1)
 		strcpy(buf, "LSRES:001H");
-	else if (resample > 100 && resample < 1000)
-		sprintf(buf, "LSRES:%03dH", resample);
 	else
 		buf[0] = 0;
 
@@ -247,7 +245,7 @@ int setup_lidar(int fd_uart, int unit_is_mm, int with_confidence, int resample, 
 		}
 	}
 
-	// setup rpm
+	// setup rpm  (The specific model range is different)
 	if (init_rpm > 300 && init_rpm < 3000) {
 		for (int i=0; i<10; i++) 
 		{
